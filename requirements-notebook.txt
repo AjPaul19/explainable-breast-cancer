@@ -1,0 +1,6 @@
+-r requirements.txt
+matplotlib>=3.8
+seaborn>=0.13
+jupyter
+nbconvert
+ipykernel

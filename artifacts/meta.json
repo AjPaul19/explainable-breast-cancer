@@ -1,0 +1,81 @@
+{
+  "features": [
+    "age",
+    "race_black",
+    "race_asian",
+    "t_stage",
+    "n_stage",
+    "m_stage",
+    "er_pos",
+    "pr_pos",
+    "her2_pos",
+    "histology_lobular",
+    "histology_other"
+  ],
+  "labels": {
+    "age": "Age at diagnosis",
+    "race_black": "Race: Black",
+    "race_asian": "Race: Asian",
+    "t_stage": "Tumour size (T)",
+    "n_stage": "Nodal status (N)",
+    "m_stage": "Distant metastasis (M1)",
+    "er_pos": "ER positive",
+    "pr_pos": "PR positive",
+    "her2_pos": "HER2 positive",
+    "histology_lobular": "Histology: lobular",
+    "histology_other": "Histology: other",
+    "menopause": "Menopausal status"
+  },
+  "race_features": [
+    "race_black",
+    "race_asian"
+  ],
+  "features_no_race": [
+    "age",
+    "t_stage",
+    "n_stage",
+    "m_stage",
+    "er_pos",
+    "pr_pos",
+    "her2_pos",
+    "histology_lobular",
+    "histology_other"
+  ],
+  "threshold_train_oof": 0.10105431079864502,
+  "threshold_all_oof": 0.10529210716485977,
+  "target_recall": 0.8,
+  "base_value": -1.7778117656707764,
+  "best_params": {
+    "colsample_bytree": 0.7055185066591156,
+    "gamma": 0.06610146580109677,
+    "learning_rate": 0.028115644561728076,
+    "max_depth": 2,
+    "min_child_weight": 0.13333595620662936,
+    "n_estimators": 189,
+    "reg_alpha": 0.09202611708454757,
+    "reg_lambda": 2.6082276650403156,
+    "subsample": 0.8211572356285312
+  },
+  "n_trees": 129,
+  "seed": 42,
+  "target": "died (TCGA overall-survival event)",
+  "n_patients": 982,
+  "n_events": 143,
+  "test_metrics": {
+    "AUC": 0.7448686371100165,
+    "AvgPrecision": 0.39977837019723506,
+    "Accuracy": 0.350253807106599,
+    "Precision": 0.17647058823529413,
+    "Recall": 0.9310344827586207,
+    "Specificity": 0.25,
+    "F1": 0.2967032967032967,
+    "Brier": 0.1133892685174942
+  },
+  "test_n": 197,
+  "oof_auc_overall": 0.6539253356893404,
+  "versions": {
+    "xgboost": "3.2.0",
+    "shap": "0.53.0",
+    "sklearn": "1.8.0"
+  }
+}
