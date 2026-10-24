@@ -3,3 +3,13 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 .claude/
+indigitous-redesign/
+
+# Hospital data: never commit
+data/local/
+*.xlsx
+*.xls
+*.xlsm
+!Chapters_4_and_5.docx
+gcmn-wordpress/tools/_mirror/
+gcmn-wordpress/tools/behaviour.txt

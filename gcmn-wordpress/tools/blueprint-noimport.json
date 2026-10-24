@@ -1,0 +1,17 @@
+{
+  "landingPage": "/",
+  "preferredVersions": {
+    "php": "8.3",
+    "wp": "latest"
+  },
+  "steps": [
+    {
+      "step": "activatePlugin",
+      "pluginPath": "gcmn-core/gcmn-core.php"
+    },
+    {
+      "step": "activateTheme",
+      "themeFolderName": "gcmn-theme"
+    }
+  ]
+}

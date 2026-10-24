@@ -1,0 +1,31 @@
+{
+  "landingPage": "/",
+  "preferredVersions": {
+    "php": "8.3",
+    "wp": "latest"
+  },
+  "steps": [
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "elementor"
+      },
+      "options": {
+        "activate": true
+      }
+    },
+    {
+      "step": "activatePlugin",
+      "pluginPath": "gcmn-core/gcmn-core.php"
+    },
+    {
+      "step": "activateTheme",
+      "themeFolderName": "gcmn-theme"
+    },
+    {
+      "step": "runPHP",
+      "code": "<?php require '/wordpress/wp-load.php'; $r = gcmn_import_bundled(); echo wp_json_encode( $r ? $r['state']['counts'] : 'nothing to do' ); ?>"
+    }
+  ]
+}

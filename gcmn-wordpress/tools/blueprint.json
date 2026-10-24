@@ -1,0 +1,28 @@
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "landingPage": "/",
+  "preferredVersions": {
+    "php": "8.3",
+    "wp": "latest"
+  },
+  "steps": [
+    {
+      "step": "defineWpConfigConsts",
+      "consts": {
+        "GCMN_SKIP_BUNDLED_IMPORT": true
+      }
+    },
+    {
+      "step": "activatePlugin",
+      "pluginPath": "gcmn-core/gcmn-core.php"
+    },
+    {
+      "step": "activateTheme",
+      "themeFolderName": "gcmn-theme"
+    },
+    {
+      "step": "runPHP",
+      "code": "<?php require '/wordpress/wp-load.php'; define('WP_DEBUG_DISPLAY', true); $r = gcmn_import_file('/wordpress/tools/test-content.json', '/wordpress/tools/media'); echo wp_json_encode($r); ?>"
+    }
+  ]
+}

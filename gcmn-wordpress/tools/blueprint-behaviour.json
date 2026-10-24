@@ -1,0 +1,27 @@
+{
+  "landingPage": "/",
+  "steps": [
+    {
+      "step": "defineWpConfigConsts",
+      "consts": {
+        "GCMN_SKIP_BUNDLED_IMPORT": true
+      }
+    },
+    {
+      "step": "activatePlugin",
+      "pluginPath": "gcmn-core/gcmn-core.php"
+    },
+    {
+      "step": "activateTheme",
+      "themeFolderName": "gcmn-theme"
+    },
+    {
+      "step": "runPHP",
+      "code": "<?php require '/wordpress/wp-load.php'; gcmn_import_file('/wordpress/tools/test-content.json',''); ?>"
+    },
+    {
+      "step": "runPHP",
+      "code": "<?php require '/wordpress/tools/behaviour.php'; ?>"
+    }
+  ]
+}
