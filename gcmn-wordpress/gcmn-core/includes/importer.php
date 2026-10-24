@@ -377,6 +377,9 @@ function gcmn_import_run( array $data, $media_dir = '', $force = false, $state =
 					}
 					update_option( 'gcmn_redirects', $clean, false );
 				}
+				if ( ! get_option( 'permalink_structure' ) ) {
+					update_option( 'permalink_structure', '/%postname%/' ); // the pages live at readable addresses
+				}
 				flush_rewrite_rules();
 				$state['phase'] = 'done';
 				$budget--;
@@ -422,6 +425,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 		if ( is_wp_error( $r ) ) {
 			WP_CLI::error( $r->get_error_message() );
 		}
+		update_option( 'gcmn_content_imported', GCMN_VERSION );
 		WP_CLI::success( sprintf( 'Imported %d pages, %d items and %d menus.', $r['pages'], $r['items'], $r['menus'] ) );
 		foreach ( $r['skipped'] as $s ) {
 			WP_CLI::warning( 'Skipped ' . $s );
