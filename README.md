@@ -1,25 +1,43 @@
-# Utilizing SHAP to explain XGBoost for breast-cancer risk — implementation
+# Recall-first, explainable and fairness-audited prediction of death during follow-up (TCGA-BRCA)
 
-Implementation phase of the University of Jos research proposal (TCGA-BRCA, XGBoost + SHAP), with an
-explicit **race-equity analysis** of how features drive predictions for Black patients.
+MSc implementation project, Dept. of Computer Science, University of Jos — *Utilizing SHAP to explain XGBoost for breast cancer*.
+**Version 2:** new target (death during follow-up), new data table (`data/data_clinical_patient.csv`), recall-first operating point,
+and a Black-vs-White bias-mitigation study. Version 1 (race-equity SHAP study) is kept in `archive/v1_race_equity_shap/`.
 
+## What is in the box
 | File | Purpose |
 |---|---|
-| `breast_cancer_shap_implementation.ipynb` | Full study: data audit → model → evaluation → SHAP (global/local/interaction) → race-equity analysis → stability → exports. Already executed; re-run to reproduce. |
-| `app.py` | Streamlit dashboard (patient explainer + what-if, global SHAP, Black-patient equity view, cohort explorer, threshold explorer). |
-| `src/brca_xai/data.py` | Data download, cleaning and the feature encoding shared by notebook and dashboard. |
-| `artifacts/` | Model, cohort with per-patient SHAP values and audit tables written by the notebook. |
-| `reports/figures/` | Figures for the thesis (PNG). |
+| `run_pipeline.py` | One command: audit → tuning → hold-out → fairness CV → SHAP → `artifacts/` and `reports/figures/` (~4 min) |
+| `breast_cancer_death_fairness.ipynb` | Narrated, executed analysis (same code as the pipeline) |
+| `app.py` | Streamlit dashboard: patient explainer, fairness lab, threshold explorer, global SHAP, data audit, cohort, model card |
+| `Chapters_3_4_5.docx` | Thesis Chapters 3 (Methodology), 4 (Implementation and Results), 5 (Conclusions) |
+| `docs/EXPLAINER.md` | The project in plain language |
+| `docs/MODEL_CARD.md` | Intended use, performance, fairness audit, limitations |
+| `docs/DATA_AUDIT.md` | Column-by-column governance, leakage ladder, missingness evidence |
+| `src/brca_xai/` | `data`, `audit`, `modeling`, `fairness`, `explain`, `plots`, `pipeline` |
+| `tools/` | Builders for the Word chapters, the docs and the notebook (all read `artifacts/`, so numbers never drift) |
+| `data/` | Input table and data dictionary (public, de-identified TCGA clinical data via cBioPortal) |
 
 ## Run
 ```bash
-pip install -r requirements-notebook.txt
-jupyter nbconvert --to notebook --execute --inplace breast_cancer_shap_implementation.ipynb   # ~2 min, downloads TCGA tables on first run
-streamlit run app.py
+pip install -r requirements.txt
+python run_pipeline.py                      # regenerate every number, figure and model
+streamlit run app.py                        # dashboard
+python tools/build_docs.py                  # docs/*.md
+python tools/build_chapters.py              # Chapters_3_4_5.docx
+python tools/build_notebook.py && jupyter nbconvert --to notebook --execute --inplace breast_cancer_death_fairness.ipynb
 ```
 
-## Things to know before you cite any number
-* **Target:** TCGA-BRCA has no benign cases, so "benign vs malignant" is replaced by *death during follow-up* (recall-first).
-* **Informative missingness** (HER2, N, M, menopause "not recorded") inflated naive AUC from ~0.65 to ~0.77; it is neutralised.
-* **Small subgroup:** 179 Black patients, 29 deaths. Subgroup SHAP rankings are only partly stable (see notebook §9, §10).
+## Design in one paragraph
+Target `died` = TCGA overall-survival event. Inputs are limited to what is known at diagnosis (age, T/N/M, PAM50, histology, prior cancer);
+follow-up time, other survival endpoints, tumour status at follow-up and fields whose *blanks* predict death are excluded (they would lift AUC from
+0.66 to 0.91). XGBoost with monotone T/N/M constraints; the alarm threshold is the highest score that still catches **80 % of deaths** (learned in-fold).
+Five strategies (race-aware baseline, race-blind, reweighing, group thresholds, reweighing + group thresholds) are compared with 5×5-fold CV and paired
+bootstrap intervals; SHAP explains the model globally, locally and by race.
+
+## Things to know before citing a number
+* **Small group:** 182 Black patients, 30 deaths. The recall gap CI is about ±14 points, so "no measurable gap" is not "no gap". The hold-out set has 6 Black deaths.
+* **Censoring:** the label ignores follow-up length; sensitivity analyses restrict evaluation to patients with settled outcomes.
+* **Modest discrimination** (AUC ≈ 0.66) is a property of the data, not the algorithm (logistic regression and random forest do no better).
+* **Clinician study (Objective 4)** is designed (Chapter 3.12) but not run.
 * Research prototype — not for clinical use.

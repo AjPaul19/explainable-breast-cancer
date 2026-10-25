@@ -13,3 +13,8 @@ data/local/
 !Chapters_4_and_5.docx
 gcmn-wordpress/tools/_mirror/
 gcmn-wordpress/tools/behaviour.txt
+
+# regenerated
+artifacts/_study.joblib
+!data/clinical_data_dictionary.xlsx
+!Chapters_3_4_5.docx

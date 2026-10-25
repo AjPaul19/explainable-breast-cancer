@@ -1,81 +1,711 @@
 {
-  "features": [
+  "flow": {
+    "n_records": 1084,
+    "n_missing_race": 90,
+    "n_other_race": 61,
+    "n_cohort": 933,
+    "n_white": 751,
+    "n_black": 182,
+    "deaths": 141,
+    "deaths_white": 111,
+    "deaths_black": 30,
+    "n_dev": 746,
+    "n_test": 187,
+    "test_black": 37,
+    "test_black_deaths": 6,
+    "test_deaths": 28,
+    "dev_deaths": 113
+  },
+  "params": {
+    "max_depth": 1,
+    "learning_rate": 0.01925833830921759,
+    "n_estimators": 377,
+    "min_child_weight": 0.8672887250102775,
+    "subsample": 0.7007129183301457,
+    "colsample_bytree": 0.6220627611238871,
+    "reg_lambda": 8.93599267897031,
+    "reg_alpha": 0.9717820827209607,
+    "gamma": 0.16829104217293056
+  },
+  "cv": {
+    "target_recall": 0.8,
+    "aware": {
+      "abs_tpr_gap": 0.005405405405405461,
+      "eod": 0.04991776315789476,
+      "flag_B": 0.689010989010989,
+      "flag_W": 0.6434087882822903,
+      "flag_all": 0.652304394426581,
+      "fpr_B": 0.6671052631578948,
+      "fpr_W": 0.6171875,
+      "fpr_all": 0.6267676767676768,
+      "fpr_gap": 0.04991776315789476,
+      "tpr_B": 0.8,
+      "tpr_W": 0.7945945945945946,
+      "tpr_all": 0.7957446808510639,
+      "tpr_gap": 0.005405405405405461,
+      "tpr_gap_ci": [
+        -0.14111447811447808,
+        0.15597444684944684
+      ],
+      "fpr_gap_ci": [
+        -0.022385963187512004,
+        0.12043022724816176
+      ],
+      "tpr_B_ci": [
+        0.6666129032258065,
+        0.9285829493087557
+      ],
+      "tpr_W_ci": [
+        0.7296725852272727,
+        0.858834422657952
+      ],
+      "fpr_B_ci": [
+        0.6026845637583893,
+        0.7281114202437732
+      ],
+      "fpr_W_ci": [
+        0.5852699135802469,
+        0.6489050569852495
+      ],
+      "tpr_all_ci": [
+        0.7338016955234592,
+        0.8555595238095237
+      ],
+      "fpr_all_ci": [
+        0.598226389838232,
+        0.6544558083100058
+      ],
+      "eod_ci": [
+        0.017727324245552064,
+        0.16795237649051203
+      ]
+    },
+    "blind": {
+      "abs_tpr_gap": 0.010810810810810811,
+      "eod": 0.04228618421052632,
+      "flag_B": 0.6868131868131868,
+      "flag_W": 0.6468708388814913,
+      "flag_all": 0.6546623794212219,
+      "fpr_B": 0.6644736842105263,
+      "fpr_W": 0.6221875,
+      "fpr_all": 0.6303030303030303,
+      "fpr_gap": 0.04228618421052632,
+      "tpr_B": 0.8,
+      "tpr_W": 0.7891891891891892,
+      "tpr_all": 0.7914893617021277,
+      "tpr_gap": 0.010810810810810811,
+      "tpr_gap_ci": [
+        -0.13382703850095157,
+        0.16284021675115015
+      ],
+      "fpr_gap_ci": [
+        -0.030485122791868966,
+        0.11357704497772572
+      ],
+      "tpr_B_ci": [
+        0.6666129032258065,
+        0.9285829493087557
+      ],
+      "tpr_W_ci": [
+        0.7199906542056075,
+        0.8558697158697158
+      ],
+      "fpr_B_ci": [
+        0.6,
+        0.7261925480212914
+      ],
+      "fpr_W_ci": [
+        0.5901187980433263,
+        0.65374146815917
+      ],
+      "tpr_all_ci": [
+        0.7278861852433282,
+        0.8527147932816537
+      ],
+      "fpr_all_ci": [
+        0.6032450147106897,
+        0.6570770604130476
+      ],
+      "eod_ci": [
+        0.015412927868990867,
+        0.1726583660987331
+      ]
+    },
+    "gthr": {
+      "abs_tpr_gap": 0.023603603603603585,
+      "eod": 0.04231907894736853,
+      "flag_B": 0.701098901098901,
+      "flag_W": 0.6591211717709721,
+      "flag_all": 0.667309753483387,
+      "fpr_B": 0.6776315789473685,
+      "fpr_W": 0.6353125,
+      "fpr_all": 0.6434343434343435,
+      "fpr_gap": 0.04231907894736853,
+      "tpr_B": 0.82,
+      "tpr_W": 0.7963963963963964,
+      "tpr_all": 0.8014184397163121,
+      "tpr_gap": 0.023603603603603585,
+      "tpr_gap_ci": [
+        -0.11301316936631026,
+        0.16408450170519132
+      ],
+      "fpr_gap_ci": [
+        -0.022983637153264708,
+        0.11025676125224242
+      ],
+      "tpr_B_ci": [
+        0.692827380952381,
+        0.9400185185185185
+      ],
+      "tpr_W_ci": [
+        0.7302511072445429,
+        0.8604214015151516
+      ],
+      "fpr_B_ci": [
+        0.6163056912906008,
+        0.7346519932476302
+      ],
+      "fpr_W_ci": [
+        0.6043296744535135,
+        0.6670906662325974
+      ],
+      "tpr_all_ci": [
+        0.7405713149522799,
+        0.8601437165775401
+      ],
+      "fpr_all_ci": [
+        0.6165962997748856,
+        0.670650277570314
+      ],
+      "eod_ci": [
+        0.017575463340632477,
+        0.17183095774555895
+      ]
+    },
+    "reweigh": {
+      "abs_tpr_gap": 0.009009009009009028,
+      "eod": 0.036907894736842084,
+      "flag_B": 0.6857142857142857,
+      "flag_W": 0.6505992010652464,
+      "flag_all": 0.6574490889603429,
+      "fpr_B": 0.6631578947368421,
+      "fpr_W": 0.62625,
+      "fpr_all": 0.6333333333333333,
+      "fpr_gap": 0.036907894736842084,
+      "tpr_B": 0.8,
+      "tpr_W": 0.790990990990991,
+      "tpr_all": 0.7929078014184398,
+      "tpr_gap": 0.009009009009009028,
+      "tpr_gap_ci": [
+        -0.13529489795918365,
+        0.1613233023852493
+      ],
+      "fpr_gap_ci": [
+        -0.0350901773739842,
+        0.10861132042521596
+      ],
+      "tpr_B_ci": [
+        0.6666129032258065,
+        0.9285829493087557
+      ],
+      "tpr_W_ci": [
+        0.7230612244897959,
+        0.855389143489254
+      ],
+      "fpr_B_ci": [
+        0.5987257037189233,
+        0.725685298935299
+      ],
+      "fpr_W_ci": [
+        0.5935164930555555,
+        0.658990810692145
+      ],
+      "tpr_all_ci": [
+        0.7285660980810235,
+        0.8537055824358774
+      ],
+      "fpr_all_ci": [
+        0.6049250948259808,
+        0.6605006258415672
+      ],
+      "eod_ci": [
+        0.014195788300904852,
+        0.1693382229391403
+      ]
+    },
+    "reweigh_gthr": {
+      "abs_tpr_gap": 0.011531531531531525,
+      "eod": 0.02937500000000004,
+      "flag_B": 0.6978021978021978,
+      "flag_W": 0.6687083888149135,
+      "flag_all": 0.6743837084673098,
+      "fpr_B": 0.675,
+      "fpr_W": 0.645625,
+      "fpr_all": 0.6512626262626262,
+      "fpr_gap": 0.02937500000000004,
+      "tpr_B": 0.8133333333333334,
+      "tpr_W": 0.8018018018018018,
+      "tpr_all": 0.8042553191489362,
+      "tpr_gap": 0.011531531531531525,
+      "tpr_gap_ci": [
+        -0.13057444005270089,
+        0.15627791927899684
+      ],
+      "fpr_gap_ci": [
+        -0.036731893646015146,
+        0.09626275550359775
+      ],
+      "tpr_B_ci": [
+        0.6799642857142858,
+        0.9400185185185185
+      ],
+      "tpr_W_ci": [
+        0.7379038112522687,
+        0.8660863095238095
+      ],
+      "fpr_B_ci": [
+        0.613509009009009,
+        0.7325208333333334
+      ],
+      "fpr_W_ci": [
+        0.6142393645790593,
+        0.6776911076443057
+      ],
+      "tpr_all_ci": [
+        0.7406125597133758,
+        0.8622639916893909
+      ],
+      "fpr_all_ci": [
+        0.6242665006870073,
+        0.678903002272509
+      ],
+      "eod_ci": [
+        0.013325119090174439,
+        0.16680828178339235
+      ]
+    }
+  },
+  "holdout": {
+    "aware": {
+      "All": {
+        "recall": 0.8214285714285714,
+        "lo": 0.644082084514089,
+        "hi": 0.9212161417056989,
+        "fpr": 0.559748427672956,
+        "n": 187,
+        "deaths": 28,
+        "auc": 0.6443171608265947,
+        "flag_rate": 0.5989304812834224,
+        "ppv": 0.20535714285714285,
+        "specificity": 0.44025157232704404
+      },
+      "White": {
+        "recall": 0.7727272727272727,
+        "lo": 0.5655964393704065,
+        "hi": 0.8987710920517964,
+        "fpr": 0.546875,
+        "n": 150,
+        "deaths": 22,
+        "auc": 0.6207386363636364,
+        "flag_rate": 0.58,
+        "ppv": 0.19540229885057472,
+        "specificity": 0.453125
+      },
+      "Black": {
+        "recall": 1.0,
+        "lo": 0.6096569663469354,
+        "hi": 0.9999999999999999,
+        "fpr": 0.6129032258064516,
+        "n": 37,
+        "deaths": 6,
+        "auc": 0.7634408602150538,
+        "flag_rate": 0.6756756756756757,
+        "ppv": 0.24,
+        "specificity": 0.3870967741935484
+      }
+    },
+    "blind": {
+      "All": {
+        "recall": 0.8571428571428571,
+        "lo": 0.6850982695512267,
+        "hi": 0.9430108706929821,
+        "fpr": 0.5911949685534591,
+        "n": 187,
+        "deaths": 28,
+        "auc": 0.6488095238095238,
+        "flag_rate": 0.6310160427807486,
+        "ppv": 0.2033898305084746,
+        "specificity": 0.4088050314465409
+      },
+      "White": {
+        "recall": 0.8181818181818182,
+        "lo": 0.6148297802336213,
+        "hi": 0.9269323397589488,
+        "fpr": 0.578125,
+        "n": 150,
+        "deaths": 22,
+        "auc": 0.6267755681818182,
+        "flag_rate": 0.6133333333333333,
+        "ppv": 0.1956521739130435,
+        "specificity": 0.421875
+      },
+      "Black": {
+        "recall": 1.0,
+        "lo": 0.6096569663469354,
+        "hi": 0.9999999999999999,
+        "fpr": 0.6451612903225806,
+        "n": 37,
+        "deaths": 6,
+        "auc": 0.7661290322580645,
+        "flag_rate": 0.7027027027027027,
+        "ppv": 0.23076923076923078,
+        "specificity": 0.3548387096774194
+      }
+    },
+    "reweigh": {
+      "All": {
+        "recall": 0.7857142857142857,
+        "lo": 0.6046105292072612,
+        "hi": 0.8978767829881058,
+        "fpr": 0.5660377358490566,
+        "n": 187,
+        "deaths": 28,
+        "auc": 0.6456648697214735,
+        "flag_rate": 0.5989304812834224,
+        "ppv": 0.19642857142857142,
+        "specificity": 0.4339622641509434
+      },
+      "White": {
+        "recall": 0.7272727272727273,
+        "lo": 0.5184787630099802,
+        "hi": 0.8684941798418556,
+        "fpr": 0.5546875,
+        "n": 150,
+        "deaths": 22,
+        "auc": 0.6242897727272727,
+        "flag_rate": 0.58,
+        "ppv": 0.1839080459770115,
+        "specificity": 0.4453125
+      },
+      "Black": {
+        "recall": 1.0,
+        "lo": 0.6096569663469354,
+        "hi": 0.9999999999999999,
+        "fpr": 0.6129032258064516,
+        "n": 37,
+        "deaths": 6,
+        "auc": 0.7553763440860216,
+        "flag_rate": 0.6756756756756757,
+        "ppv": 0.24,
+        "specificity": 0.3870967741935484
+      }
+    },
+    "gthr": {
+      "All": {
+        "recall": 0.8571428571428571,
+        "lo": 0.6850982695512267,
+        "hi": 0.9430108706929821,
+        "fpr": 0.6289308176100629,
+        "n": 187,
+        "deaths": 28,
+        "auc": 0.6488095238095238,
+        "flag_rate": 0.6631016042780749,
+        "ppv": 0.1935483870967742,
+        "specificity": 0.3710691823899371
+      },
+      "White": {
+        "recall": 0.8181818181818182,
+        "lo": 0.6148297802336213,
+        "hi": 0.9269323397589488,
+        "fpr": 0.578125,
+        "n": 150,
+        "deaths": 22,
+        "auc": 0.6267755681818182,
+        "flag_rate": 0.6133333333333333,
+        "ppv": 0.1956521739130435,
+        "specificity": 0.421875
+      },
+      "Black": {
+        "recall": 1.0,
+        "lo": 0.6096569663469354,
+        "hi": 0.9999999999999999,
+        "fpr": 0.8387096774193549,
+        "n": 37,
+        "deaths": 6,
+        "auc": 0.7661290322580645,
+        "flag_rate": 0.8648648648648649,
+        "ppv": 0.1875,
+        "specificity": 0.16129032258064516
+      }
+    },
+    "reweigh_gthr": {
+      "All": {
+        "recall": 0.7857142857142857,
+        "lo": 0.6046105292072612,
+        "hi": 0.8978767829881058,
+        "fpr": 0.610062893081761,
+        "n": 187,
+        "deaths": 28,
+        "auc": 0.6456648697214735,
+        "flag_rate": 0.6363636363636364,
+        "ppv": 0.18487394957983194,
+        "specificity": 0.389937106918239
+      },
+      "White": {
+        "recall": 0.7272727272727273,
+        "lo": 0.5184787630099802,
+        "hi": 0.8684941798418556,
+        "fpr": 0.5546875,
+        "n": 150,
+        "deaths": 22,
+        "auc": 0.6242897727272727,
+        "flag_rate": 0.58,
+        "ppv": 0.1839080459770115,
+        "specificity": 0.4453125
+      },
+      "Black": {
+        "recall": 1.0,
+        "lo": 0.6096569663469354,
+        "hi": 0.9999999999999999,
+        "fpr": 0.8387096774193549,
+        "n": 37,
+        "deaths": 6,
+        "auc": 0.7553763440860216,
+        "flag_rate": 0.8648648648648649,
+        "ppv": 0.1875,
+        "specificity": 0.16129032258064516
+      }
+    }
+  },
+  "thresholds": {
+    "aware": {
+      "global": 0.11796804517507553,
+      "White": 0.11796804517507553,
+      "Black": 0.12958257645368576
+    },
+    "blind": {
+      "global": 0.11919150687754154,
+      "White": 0.11919150687754154,
+      "Black": 0.13088176399469376
+    },
+    "reweigh": {
+      "global": 0.11820523254573345,
+      "White": 0.11820523254573345,
+      "Black": 0.12997418083250523
+    },
+    "gthr": {
+      "global": 0.11919150687754154,
+      "White": 0.11919150687754154,
+      "Black": 0.13088176399469376
+    },
+    "reweigh_gthr": {
+      "global": 0.11820523254573345,
+      "White": 0.11820523254573345,
+      "Black": 0.12997418083250523
+    }
+  },
+  "base_value": {
+    "aware": -1.7571277618408203,
+    "blind": -1.7550125122070312,
+    "reweigh": -1.7547900676727295
+  },
+  "features_aware": [
     "age",
-    "race_black",
-    "race_asian",
     "t_stage",
     "n_stage",
     "m_stage",
-    "er_pos",
-    "pr_pos",
-    "her2_pos",
+    "sub_luma",
+    "sub_lumb",
+    "sub_her2",
+    "sub_basal",
+    "sub_normal",
     "histology_lobular",
-    "histology_other"
+    "histology_other",
+    "prior_dx",
+    "race_black"
+  ],
+  "features_blind": [
+    "age",
+    "t_stage",
+    "n_stage",
+    "m_stage",
+    "sub_luma",
+    "sub_lumb",
+    "sub_her2",
+    "sub_basal",
+    "sub_normal",
+    "histology_lobular",
+    "histology_other",
+    "prior_dx"
   ],
   "labels": {
     "age": "Age at diagnosis",
-    "race_black": "Race: Black",
-    "race_asian": "Race: Asian",
     "t_stage": "Tumour size (T)",
     "n_stage": "Nodal status (N)",
     "m_stage": "Distant metastasis (M1)",
-    "er_pos": "ER positive",
-    "pr_pos": "PR positive",
-    "her2_pos": "HER2 positive",
+    "sub_luma": "PAM50: Luminal A",
+    "sub_lumb": "PAM50: Luminal B",
+    "sub_her2": "PAM50: HER2-enriched",
+    "sub_basal": "PAM50: Basal-like",
+    "sub_normal": "PAM50: Normal-like",
     "histology_lobular": "Histology: lobular",
     "histology_other": "Histology: other",
-    "menopause": "Menopausal status"
+    "prior_dx": "Prior diagnosis",
+    "race_black": "Race: Black"
   },
-  "race_features": [
-    "race_black",
-    "race_asian"
-  ],
-  "features_no_race": [
-    "age",
-    "t_stage",
-    "n_stage",
-    "m_stage",
-    "er_pos",
-    "pr_pos",
-    "her2_pos",
-    "histology_lobular",
-    "histology_other"
-  ],
-  "threshold_train_oof": 0.10105431079864502,
-  "threshold_all_oof": 0.10529210716485977,
-  "target_recall": 0.8,
-  "base_value": -1.7778117656707764,
-  "best_params": {
-    "colsample_bytree": 0.7055185066591156,
-    "gamma": 0.06610146580109677,
-    "learning_rate": 0.028115644561728076,
-    "max_depth": 2,
-    "min_child_weight": 0.13333595620662936,
-    "n_estimators": 189,
-    "reg_alpha": 0.09202611708454757,
-    "reg_lambda": 2.6082276650403156,
-    "subsample": 0.8211572356285312
-  },
-  "n_trees": 129,
   "seed": 42,
-  "target": "died (TCGA overall-survival event)",
-  "n_patients": 982,
-  "n_events": 143,
-  "test_metrics": {
-    "AUC": 0.7448686371100165,
-    "AvgPrecision": 0.39977837019723506,
-    "Accuracy": 0.350253807106599,
-    "Precision": 0.17647058823529413,
-    "Recall": 0.9310344827586207,
-    "Specificity": 0.25,
-    "F1": 0.2967032967032967,
-    "Brier": 0.1133892685174942
+  "n_repeats": 5,
+  "n_boot": 1000,
+  "strategies": {
+    "aware": {
+      "label": "Baseline (race-aware, one threshold)",
+      "family": "baseline",
+      "note": "Race is a model input; a single recall-first threshold for everyone.",
+      "features": [
+        "age",
+        "t_stage",
+        "n_stage",
+        "m_stage",
+        "sub_luma",
+        "sub_lumb",
+        "sub_her2",
+        "sub_basal",
+        "sub_normal",
+        "histology_lobular",
+        "histology_other",
+        "prior_dx",
+        "race_black"
+      ],
+      "reweigh": false,
+      "group_thresholds": false
+    },
+    "blind": {
+      "label": "Race-blind (one threshold)",
+      "family": "unawareness",
+      "note": "Fairness through unawareness: the race column is removed.",
+      "features": [
+        "age",
+        "t_stage",
+        "n_stage",
+        "m_stage",
+        "sub_luma",
+        "sub_lumb",
+        "sub_her2",
+        "sub_basal",
+        "sub_normal",
+        "histology_lobular",
+        "histology_other",
+        "prior_dx"
+      ],
+      "reweigh": false,
+      "group_thresholds": false
+    },
+    "reweigh": {
+      "label": "Reweighing (race-blind, one threshold)",
+      "family": "pre-processing",
+      "note": "Training rows re-weighted so race and outcome are independent; no race needed at prediction time.",
+      "features": [
+        "age",
+        "t_stage",
+        "n_stage",
+        "m_stage",
+        "sub_luma",
+        "sub_lumb",
+        "sub_her2",
+        "sub_basal",
+        "sub_normal",
+        "histology_lobular",
+        "histology_other",
+        "prior_dx"
+      ],
+      "reweigh": true,
+      "group_thresholds": false
+    },
+    "gthr": {
+      "label": "Group thresholds (race-blind scores)",
+      "family": "post-processing",
+      "note": "Each group gets its own threshold so that both reach the target recall.",
+      "features": [
+        "age",
+        "t_stage",
+        "n_stage",
+        "m_stage",
+        "sub_luma",
+        "sub_lumb",
+        "sub_her2",
+        "sub_basal",
+        "sub_normal",
+        "histology_lobular",
+        "histology_other",
+        "prior_dx"
+      ],
+      "reweigh": false,
+      "group_thresholds": true
+    },
+    "reweigh_gthr": {
+      "label": "Reweighing + group thresholds",
+      "family": "combined",
+      "note": "Pre- and post-processing together.",
+      "features": [
+        "age",
+        "t_stage",
+        "n_stage",
+        "m_stage",
+        "sub_luma",
+        "sub_lumb",
+        "sub_her2",
+        "sub_basal",
+        "sub_normal",
+        "histology_lobular",
+        "histology_other",
+        "prior_dx"
+      ],
+      "reweigh": true,
+      "group_thresholds": true
+    }
   },
-  "test_n": 197,
-  "oof_auc_overall": 0.6539253356893404,
+  "risk_gap_total": 0.046343207359313965,
+  "agreement": {
+    "blind_vs_aware": {
+      "rank_corr": 0.99124495269876,
+      "per_patient_rank_corr": 0.9921814854104424
+    },
+    "blind_vs_reweigh": {
+      "rank_corr": 1.0,
+      "per_patient_rank_corr": 0.9982797950712391
+    }
+  },
+  "holdout_thresholds": {
+    "aware": {
+      "global": 0.11474914476275444,
+      "White": 0.11474914476275444,
+      "Black": 0.10251558572053909
+    },
+    "blind": {
+      "global": 0.11305450275540352,
+      "White": 0.11305450275540352,
+      "Black": 0.10484538599848747
+    },
+    "reweigh": {
+      "global": 0.1132650263607502,
+      "White": 0.1132650263607502,
+      "Black": 0.10323721915483475
+    },
+    "gthr": {
+      "global": 0.11305450275540352,
+      "White": 0.11305450275540352,
+      "Black": 0.10484538599848747
+    },
+    "reweigh_gthr": {
+      "global": 0.1132650263607502,
+      "White": 0.1132650263607502,
+      "Black": 0.10323721915483475
+    }
+  },
   "versions": {
     "xgboost": "3.2.0",
     "shap": "0.53.0",
-    "sklearn": "1.8.0"
+    "sklearn": "1.8.0",
+    "pandas": "3.0.2"
   }
 }

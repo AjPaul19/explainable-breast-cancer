@@ -1,207 +1,234 @@
-"""Data acquisition, cleaning and feature encoding for the TCGA-BRCA study.
+"""Loading, auditing, cleaning and encoding of the TCGA-BRCA clinical patient table.
 
-Sources (both public, de-identified TCGA data):
-  * UCSC Xena  - TCGA-BRCA clinical matrix (receptor status, histology, menopause ...)
-  * cBioPortal - TCGA PanCancer Atlas 2018 patient table (RACE, AGE, TNM, overall survival)
+Source: ``data/data_clinical_patient.csv`` (cBioPortal, TCGA PanCancer Atlas 2018 clinical patient
+table; header row 1 = display names, row 2 = machine names).  ``data/clinical_data_dictionary.xlsx``
+documents every column.
 
-The two tables are joined on the TCGA patient barcode.
+Design rules (see docs/DATA_AUDIT.md for the evidence):
 
-The single source of truth for the model schema lives here (``FEATURES`` / ``encode``), so the
-notebook that trains the model and the dashboard that serves it can never disagree about how a
-patient is turned into a feature vector.
+* The label is ``died`` = ``OS_STATUS`` is ``1:DECEASED`` (death during follow-up).
+* Only information known at (or shortly after) diagnosis is used as input.  Columns that record what
+  happened *after* diagnosis, or that are the outcome in another costume, are excluded (``LEAKY``).
+* Columns whose *missingness* tracks the outcome (a registry artefact, not biology) are excluded
+  (``INFORMATIVE_MISSING``) or neutralised with the clinical default (MX -> M0, NX -> N0).
+* The single source of truth for the model schema is ``FEATURE_INFO`` / ``encode`` so that the
+  notebook that trains the model and the dashboard that serves it cannot disagree.
 """
 from __future__ import annotations
 
-import urllib.request
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-RAW_DIR = ROOT / "data" / "raw"
+DATA_PATH = ROOT / "data" / "data_clinical_patient.csv"
 
-XENA_URL = ("https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/"
-            "TCGA.BRCA.sampleMap%2FBRCA_clinicalMatrix")
-CBIO_BASE = ("https://media.githubusercontent.com/media/cBioPortal/datahub/master/public/"
-             "brca_tcga_pan_can_atlas_2018/")
-SOURCES = {
-    "xena_clinical.tsv": XENA_URL,
-    "cbio_patient.tsv": CBIO_BASE + "data_clinical_patient.txt",
+TARGET = "died"
+GROUP_COL = "race"
+PRIVILEGED, UNPRIVILEGED = "White", "Black"   # reference group first
+GROUPS = [PRIVILEGED, UNPRIVILEGED]
+RACE_MAP = {"White": "White", "Black or African American": "Black"}
+
+# --------------------------------------------------------------------------------------------
+# Column governance
+# --------------------------------------------------------------------------------------------
+# Columns that must never be model inputs, with the reason (used verbatim in the audit table).
+LEAKY = {
+    "OS_MONTHS": "the follow-up time that defines the outcome",
+    "DAYS_LAST_FOLLOWUP": "follow-up time; blank for 100 % of deaths in the cohort (another label)",
+    "DSS_STATUS": "disease-specific death: a subset of the outcome",
+    "DSS_MONTHS": "survival time",
+    "DFS_STATUS": "recurrence after treatment: only known after follow-up",
+    "DFS_MONTHS": "survival time",
+    "PFS_STATUS": "progression: only known after follow-up",
+    "PFS_MONTHS": "survival time",
+    "PERSON_NEOPLASM_CANCER_STATUS": "tumour status at last follow-up (post-baseline, outcome proxy)",
+    "NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT": "post-treatment event (post-baseline, outcome proxy)",
+    "DAYS_TO_INITIAL_PATHOLOGIC_DIAGNOSIS": "constant 0 reference day",
+    "FORM_COMPLETION_DATE": "administrative date",
 }
-
-RACE_LEVELS = ["White", "Black or African American", "Asian"]
-RACE_SHORT = {"White": "White", "Black or African American": "Black", "Asian": "Asian"}
+# Usable in principle but their *missingness* encodes the outcome / registry practice.
+INFORMATIVE_MISSING = {
+    "RADIATION_THERAPY": "missing for 56 % deaths vs 12 % otherwise: a documentation artefact",
+    "ETHNICITY": "missing for 4 % deaths vs 16 % otherwise: reporting practice, not biology",
+    "PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT": "36 % missing and largely post-operative",
+    "AJCC_STAGING_EDITION": "an administrative variable whose missingness differs by race (126 of 751 White vs 8 of 182 Black)",
+}
+# Carry no signal (constant, unique, empty or redundant with a kept column).
+NO_SIGNAL = {
+    "PATIENT_ID": "identifier", "OTHER_PATIENT_ID": "identifier", "CANCER_TYPE_ACRONYM": "constant (BRCA)",
+    "ICD_10": "constant (C50.9)", "ICD_O_3_SITE": "constant", "INFORMED_CONSENT_VERIFIED": "constant",
+    "WEIGHT": "100 % missing", "IN_PANCANPATHWAYS_FREEZE": "administrative (equals SUBTYPE missingness)",
+    "DAYS_TO_BIRTH": "redundant with AGE", "SEX": "12 male patients: too few to model",
+    "HISTORY_NEOADJUVANT_TRTYN": "only 6 'Yes'", "AJCC_PATHOLOGIC_TUMOR_STAGE": "redundant with T, N, M",
+    "GENETIC_ANCESTRY_LABEL": "used only for the sensitivity analysis, never as an input",
+}
 
 # --------------------------------------------------------------------------------------------
 # Model schema
 # --------------------------------------------------------------------------------------------
-# column name -> (display label, description)
 FEATURE_INFO = {
     "age": ("Age at diagnosis", "Age (years) at initial pathologic diagnosis"),
-    "race_black": ("Race: Black", "1 = Black or African American (reference: White)"),
-    "race_asian": ("Race: Asian", "1 = Asian (reference: White)"),
-    "t_stage": ("Tumour size (T)", "AJCC pathologic T category, 1-4"),
+    "t_stage": ("Tumour size (T)", "AJCC pathologic T category, 1-4 (TX = unknown)"),
     "n_stage": ("Nodal status (N)", "AJCC pathologic N category, 0-3 (NX / not assessed is treated as N0)"),
     "m_stage": ("Distant metastasis (M1)", "1 = AJCC pathologic M1 (MX / not assessed is treated as M0, the AJCC default)"),
-    "er_pos": ("ER positive", "Estrogen-receptor status by IHC"),
-    "pr_pos": ("PR positive", "Progesterone-receptor status by IHC"),
-    "her2_pos": ("HER2 positive", "HER2 positive by IHC / FISH (not recorded or equivocal is treated as not positive)"),
+    "sub_luma": ("PAM50: Luminal A", "1 = Luminal A (reference group of the PAM50 set)"),
+    "sub_lumb": ("PAM50: Luminal B", "1 = Luminal B"),
+    "sub_her2": ("PAM50: HER2-enriched", "1 = HER2-enriched"),
+    "sub_basal": ("PAM50: Basal-like", "1 = Basal-like (triple-negative like)"),
+    "sub_normal": ("PAM50: Normal-like", "1 = Normal-like"),
     "histology_lobular": ("Histology: lobular", "1 = infiltrating lobular carcinoma (reference: ductal)"),
     "histology_other": ("Histology: other", "1 = mucinous / medullary / metaplastic / mixed / other"),
+    "prior_dx": ("Prior diagnosis", "1 = patient had a prior malignancy"),
+    "race_black": ("Race: Black", "1 = Black or African American (reference: White)"),
 }
-FEATURES = list(FEATURE_INFO)
+RACE_FEATURES = ["race_black"]
+FEATURES_BLIND = [f for f in FEATURE_INFO if f not in RACE_FEATURES]
+FEATURES_AWARE = FEATURES_BLIND + RACE_FEATURES
+LABELS = {k: v[0] for k, v in FEATURE_INFO.items()}
 
-# Used ONLY for the missing-data audit in the notebook: the "naive" encoding keeps NaN as a signal
-# and includes menopausal status. It is NOT what the final model uses (see notebook section 1.2).
-NAIVE_EXTRA = {"menopause": ("Menopausal status", "0 = pre, 1 = peri, 2 = post (missing is informative - audit only)")}
-LABELS = {k: v[0] for k, v in {**FEATURE_INFO, **NAIVE_EXTRA}.items()}
-FEATURES_NAIVE = FEATURES + ["menopause"]
+# Direction a clinician expects (+1 = higher value raises mortality risk).
+CLINICAL_PRIOR = {"age": +1, "t_stage": +1, "n_stage": +1, "m_stage": +1}
 
-# The same model without the two race columns - used to test what race adds.
-RACE_FEATURES = ["race_black", "race_asian"]
-FEATURES_NO_RACE = [f for f in FEATURES if f not in RACE_FEATURES]
-
-# Direction clinicians would expect: +1 = higher value should raise mortality risk, -1 = lower.
-# Used in the notebook to check that SHAP agrees with established medical knowledge.
-CLINICAL_PRIOR = {
-    "age": +1, "t_stage": +1, "n_stage": +1, "m_stage": +1,
-    "er_pos": -1, "pr_pos": -1,
-}
-
-TARGET = "died"          # 1 = deceased during follow-up (TCGA overall survival event)
+SUBTYPE_COLS = {"BRCA_LumA": "sub_luma", "BRCA_LumB": "sub_lumb", "BRCA_Her2": "sub_her2",
+                "BRCA_Basal": "sub_basal", "BRCA_Normal": "sub_normal"}
 
 
 # --------------------------------------------------------------------------------------------
-# Download
+# Loading
 # --------------------------------------------------------------------------------------------
-def download_raw(force: bool = False) -> dict[str, Path]:
-    """Fetch the two public source tables into ``data/raw`` (cached)."""
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    paths = {}
-    for name, url in SOURCES.items():
-        path = RAW_DIR / name
-        if force or not path.exists() or path.stat().st_size < 10_000:
-            print(f"downloading {name} ...")
-            req = urllib.request.Request(url, headers={"User-Agent": "brca-xai-research"})
-            with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
-                f.write(r.read())
-        paths[name] = path
-    return paths
+def load_raw(path: Path | str = DATA_PATH) -> pd.DataFrame:
+    """Read the CSV (row 0 = display names, row 1 = machine names, data from row 2)."""
+    raw = pd.read_csv(path, header=1, dtype=str, keep_default_na=False, na_values=[""])
+    for c in raw.columns:
+        raw[c] = raw[c].str.strip().replace({"": np.nan})
+    for c in ["AGE", "OS_MONTHS", "DAYS_LAST_FOLLOWUP", "DSS_MONTHS", "DFS_MONTHS", "PFS_MONTHS", "WEIGHT"]:
+        raw[c] = pd.to_numeric(raw[c], errors="coerce")
+    raw[TARGET] = raw["OS_STATUS"].str.startswith("1").astype(int)
+    return raw
 
 
-# --------------------------------------------------------------------------------------------
-# Cleaning
-# --------------------------------------------------------------------------------------------
-def _pos_neg(s: pd.Series) -> pd.Series:
-    """'Positive'/'Negative' -> 1.0/0.0 ; anything else (equivocal, indeterminate, NA) -> NaN."""
-    return s.map({"Positive": 1.0, "Negative": 0.0})
+def _ordinal(s: pd.Series, prefix: str) -> pd.Series:
+    """'N1A' -> 1, 'T4B' -> 4, 'N0 (I+)' -> 0, 'NX' -> NaN."""
+    return s.str.extract(rf"^c?{prefix}(\d)")[0].astype(float)
 
 
-def _ordinal_from_code(s: pd.Series, pattern: str) -> pd.Series:
-    return s.astype("string").str.upper().str.extract(pattern)[0].astype(float)
+def clean(raw: pd.DataFrame) -> pd.DataFrame:
+    """Study cohort (self-reported White or Black) with tidy, human-readable columns."""
+    df = raw.copy()
+    df["race"] = df["RACE"].map(RACE_MAP)
+    df = df[df["race"].notna()].copy()
+    c = pd.DataFrame(index=df.index)
+    c["patient_id"] = df["PATIENT_ID"]
+    c["race"] = df["race"]
+    c[TARGET] = df[TARGET]
+    c["followup_months"] = df["OS_MONTHS"]
+    c["age"] = df["AGE"]
+    c["t_stage"] = _ordinal(df["PATH_T_STAGE"], "T")
+    c["n_stage"] = _ordinal(df["PATH_N_STAGE"], "N")
+    c["m_stage"] = np.where(df["PATH_M_STAGE"].str.startswith("M1"), 1.0,
+                            np.where(df["PATH_M_STAGE"].isin(["M0", "CM0 (I+)", "MX"]), 0.0, np.nan))
+    c["subtype"] = df["SUBTYPE"].str.replace("BRCA_", "", regex=False)
+    hist = df["ICD_O_3_HISTOLOGY"]
+    c["histology"] = np.select([hist == "8500/3", hist == "8520/3"], ["Ductal", "Lobular"], default="Other")
+    c["prior_dx"] = df["PRIOR_DX"].map({"Yes": 1.0, "No": 0.0})
+    c["ancestry"] = df["GENETIC_ANCESTRY_LABEL"].replace({"": np.nan}).fillna("not called")
+    c["sex"] = df["SEX"]
+    # kept only for the audit and the sensitivity analyses - never model inputs
+    for k in ["PATH_N_STAGE", "PATH_M_STAGE", "PATH_T_STAGE", "RADIATION_THERAPY", "ETHNICITY",
+              "PERSON_NEOPLASM_CANCER_STATUS", "NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT",
+              "PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT", "DAYS_LAST_FOLLOWUP"]:
+        c["raw_" + k.lower()] = df[k]
+    return c.reset_index(drop=True)
 
 
-def load_clean() -> pd.DataFrame:
-    """Return one row per female primary-tumour patient with human-readable clinical columns.
-
-    Missingness is preserved (NaN) rather than imputed: XGBoost and SHAP both handle missing
-    values natively, and 'not recorded' is itself clinically meaningful.
-    """
-    paths = download_raw()
-    cbio = pd.read_csv(paths["cbio_patient.tsv"], sep="\t", comment="#")
-    xena = pd.read_csv(paths["xena_clinical.tsv"], sep="\t", low_memory=False)
-
-    xena = xena[xena["sample_type"] == "Primary Tumor"].copy()
-    xena["PATIENT_ID"] = xena["_PATIENT"]
-    xena = xena.drop_duplicates("PATIENT_ID")
-    keep = ["PATIENT_ID", "breast_carcinoma_estrogen_receptor_status",
-            "breast_carcinoma_progesterone_receptor_status",
-            "lab_proc_her2_neu_immunohistochemistry_receptor_status",
-            "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
-            "histological_type", "menopause_status"]
-    df = cbio.merge(xena[keep], on="PATIENT_ID", how="inner")
-
-    out = pd.DataFrame({"patient_id": df["PATIENT_ID"]})
-    out["race_full"] = df["RACE"]
-    out["race"] = df["RACE"].map(RACE_SHORT)
-    out["age"] = df["AGE"].astype(float)
-    out["t_stage"] = _ordinal_from_code(df["PATH_T_STAGE"], r"^T(\d)")
-    out["n_stage"] = _ordinal_from_code(df["PATH_N_STAGE"], r"^N(\d)")
-    m = df["PATH_M_STAGE"].astype("string").str.upper()
-    out["m_stage"] = np.where(m.str.startswith("M1"), 1.0, np.where(m.str.contains("M0"), 0.0, np.nan))
-    out["er_pos"] = _pos_neg(df["breast_carcinoma_estrogen_receptor_status"])
-    out["pr_pos"] = _pos_neg(df["breast_carcinoma_progesterone_receptor_status"])
-    her2 = _pos_neg(df["lab_proc_her2_neu_immunohistochemistry_receptor_status"])
-    fish = _pos_neg(df["lab_procedure_her2_neu_in_situ_hybrid_outcome_type"])
-    out["her2_pos"] = her2.fillna(fish)              # equivocal / missing IHC -> fall back to FISH
-    hist = df["histological_type"].fillna("")
-    out["histology"] = np.select(
-        [hist.eq("Infiltrating Ductal Carcinoma"), hist.eq("Infiltrating Lobular Carcinoma"), hist.ne("")],
-        ["Ductal", "Lobular", "Other"], default=None)
-    out["menopause"] = df["menopause_status"].astype("string").str[:3].map(
-        {"Pre": 0.0, "Per": 1.0, "Pos": 2.0})
-    # descriptive-only columns (never fed to the model)
-    stage = df["AJCC_PATHOLOGIC_TUMOR_STAGE"].astype("string").str.upper().str.replace("STAGE ", "", regex=False)
-    out["stage_group"] = stage.str.extract(r"^(IV|III|II|I)")[0]
-    out["pam50"] = df["SUBTYPE"].astype("string").str.replace("BRCA_", "", regex=False)
-    out["os_months"] = df["OS_MONTHS"].astype(float)
-    out[TARGET] = df["OS_STATUS"].astype("string").str.startswith("1").astype(float)
-    out.loc[df["OS_STATUS"].isna(), TARGET] = np.nan
-
-    # --- inclusion criteria -------------------------------------------------------------
-    out = out[(df["SEX"].str.upper() == "FEMALE").values]                  # male breast cancer: n too small
-    out = out[out["race"].isin(RACE_SHORT.values())]           # race recorded & n >= 60 per group
-    out = out[out[TARGET].notna() & out["age"].notna()]
-    return out.reset_index(drop=True)
+def encode(c: pd.DataFrame) -> pd.DataFrame:
+    """Clean table -> model matrix with every column in ``FEATURES_AWARE`` (blind models drop race)."""
+    X = pd.DataFrame(index=c.index)
+    X["age"] = c["age"].astype(float)
+    X["t_stage"] = c["t_stage"].astype(float)                 # TX stays NaN (3 patients)
+    X["n_stage"] = c["n_stage"].astype(float).fillna(0.0)     # NX -> N0 (audit: NX carries a documentation artefact)
+    X["m_stage"] = c["m_stage"].astype(float).fillna(0.0)     # MX -> M0
+    known = c["subtype"].notna()
+    for name, col in SUBTYPE_COLS.items():
+        X[col] = np.where(known, (c["subtype"] == name.replace("BRCA_", "")).astype(float), np.nan)
+    X["histology_lobular"] = (c["histology"] == "Lobular").astype(float)
+    X["histology_other"] = (c["histology"] == "Other").astype(float)
+    X["prior_dx"] = c["prior_dx"].astype(float)
+    X["race_black"] = (c["race"] == "Black").astype(float)
+    return X[FEATURES_AWARE]
 
 
-# --------------------------------------------------------------------------------------------
-# Encoding (shared by training and the dashboard)
-# --------------------------------------------------------------------------------------------
-def encode(clean: pd.DataFrame, naive: bool = False) -> pd.DataFrame:
-    """Human-readable patient table -> numeric model matrix with columns ``FEATURES``.
-
-    The missing-data audit (notebook section 1.2) found that *not having a value recorded* for
-    HER2, nodal status, M-stage and menopausal status is itself strongly associated with death
-    (e.g. 33 % vs 11 % for HER2).  That is a documentation artefact of the registry, not biology,
-    and a model that learns it would (a) look better than it is and (b) reward "unknown" inputs
-    in the dashboard.  The default encoding therefore applies the clinical conventions:
-        MX -> M0, NX -> N0, HER2 not recorded -> not positive, menopause dropped (collinear with age).
-    ER / PR missingness is not outcome-associated and stays NaN (handled natively by XGBoost).
-    ``naive=True`` reproduces the unprotected encoding, for the audit only.
-    """
-    X = pd.DataFrame(index=clean.index)
-    X["age"] = clean["age"].astype(float)
-    X["race_black"] = (clean["race"] == "Black").astype(float)
-    X["race_asian"] = (clean["race"] == "Asian").astype(float)
-    X["t_stage"] = clean["t_stage"].astype(float)
-    X["n_stage"] = clean["n_stage"].astype(float)
-    X["m_stage"] = clean["m_stage"].astype(float)
-    X["er_pos"] = clean["er_pos"].astype(float)
-    X["pr_pos"] = clean["pr_pos"].astype(float)
-    X["her2_pos"] = clean["her2_pos"].astype(float)
-    known = clean["histology"].notna()
-    X["histology_lobular"] = np.where(known, (clean["histology"] == "Lobular").astype(float), np.nan)
-    X["histology_other"] = np.where(known, (clean["histology"] == "Other").astype(float), np.nan)
-    if naive:
-        X["menopause"] = clean["menopause"].astype(float)
-        return X[FEATURES_NAIVE]
-    X["n_stage"] = X["n_stage"].fillna(0.0)
-    X["m_stage"] = X["m_stage"].fillna(0.0)
-    X["her2_pos"] = X["her2_pos"].fillna(0.0)
-    return X[FEATURES]
+def strata(c: pd.DataFrame) -> pd.Series:
+    """race x outcome strata: every split keeps Black patients *and* deaths among them."""
+    return c["race"].astype(str) + "_" + c[TARGET].astype(int).astype(str)
 
 
-def split_labels(clean: pd.DataFrame, seed: int = 42, val: float = 0.2, test: float = 0.2) -> pd.Series:
-    """Stratified train/val/test assignment (stratified on race x outcome so every split keeps
-    Black patients *and* deaths among them)."""
+def split_labels(c: pd.DataFrame, seed: int = 42, test: float = 0.2) -> pd.Series:
+    """Stratified development ('dev') / hold-out ('test') assignment."""
     from sklearn.model_selection import train_test_split
-    strata = clean["race"].astype(str) + "_" + clean[TARGET].astype(int).astype(str)
-    idx = np.arange(len(clean))
-    tv, te = train_test_split(idx, test_size=test, stratify=strata, random_state=seed)
-    tr, va = train_test_split(tv, test_size=val / (1 - test), stratify=strata.iloc[tv], random_state=seed)
-    s = pd.Series("train", index=clean.index)
-    s.iloc[va] = "val"
+    idx = np.arange(len(c))
+    _, te = train_test_split(idx, test_size=test, stratify=strata(c), random_state=seed)
+    s = pd.Series("dev", index=c.index)
     s.iloc[te] = "test"
     return s
+
+
+# --------------------------------------------------------------------------------------------
+# Audit tables (used by the notebook, the dashboard and the thesis)
+# --------------------------------------------------------------------------------------------
+def column_governance() -> pd.DataFrame:
+    rows = []
+    for d, label in [(LEAKY, "Excluded: outcome leakage / post-baseline"),
+                     (INFORMATIVE_MISSING, "Excluded: informative missingness"),
+                     (NO_SIGNAL, "Excluded: no signal / redundant")]:
+        rows += [{"column": k, "decision": label, "reason": v} for k, v in d.items()]
+    kept = {"AGE": "age", "PATH_T_STAGE": "t_stage", "PATH_N_STAGE": "n_stage", "PATH_M_STAGE": "m_stage",
+            "SUBTYPE": "sub_*", "ICD_O_3_HISTOLOGY": "histology_*", "PRIOR_DX": "prior_dx",
+            "RACE": "race_black (aware model only) and the fairness group"}
+    rows += [{"column": k, "decision": "Kept as model input", "reason": f"-> {v}"} for k, v in kept.items()]
+    rows.append({"column": "OS_STATUS", "decision": "Target", "reason": "1:DECEASED -> died = 1"})
+    return pd.DataFrame(rows)
+
+
+def missingness_audit(raw: pd.DataFrame) -> pd.DataFrame:
+    """Death rate when a column is recorded vs missing, within the White + Black cohort."""
+    b = raw[raw["RACE"].isin(RACE_MAP)]
+    rows = []
+    for col in ["SUBTYPE", "RADIATION_THERAPY", "ETHNICITY", "PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT",
+                "PERSON_NEOPLASM_CANCER_STATUS", "NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT",
+                "AJCC_STAGING_EDITION", "DAYS_LAST_FOLLOWUP"]:
+        m = b[col].isna()
+        rows.append({"column": col, "n_missing": int(m.sum()), "pct_missing": 100 * m.mean(),
+                     "death_rate_missing": b.loc[m, TARGET].mean(), "death_rate_recorded": b.loc[~m, TARGET].mean()})
+    nx = b["PATH_N_STAGE"] == "NX"
+    mx = b["PATH_M_STAGE"] == "MX"
+    rows.append({"column": "PATH_N_STAGE = NX", "n_missing": int(nx.sum()), "pct_missing": 100 * nx.mean(),
+                 "death_rate_missing": b.loc[nx, TARGET].mean(), "death_rate_recorded": b.loc[~nx, TARGET].mean()})
+    rows.append({"column": "PATH_M_STAGE = MX", "n_missing": int(mx.sum()), "pct_missing": 100 * mx.mean(),
+                 "death_rate_missing": b.loc[mx, TARGET].mean(), "death_rate_recorded": b.loc[~mx, TARGET].mean()})
+    return pd.DataFrame(rows)
+
+
+def table1(c: pd.DataFrame) -> pd.DataFrame:
+    """Cohort characteristics by race (counts and percentages)."""
+    rows = []
+    def add(name, w, b):
+        rows.append({"characteristic": name, "White": w, "Black": b})
+    W, B = c[c.race == "White"], c[c.race == "Black"]
+    add("Patients, n", f"{len(W)}", f"{len(B)}")
+    add("Deaths during follow-up, n (%)", f"{W[TARGET].sum()} ({100*W[TARGET].mean():.1f}%)", f"{B[TARGET].sum()} ({100*B[TARGET].mean():.1f}%)")
+    add("Age, median (IQR)", f"{W.age.median():.0f} ({W.age.quantile(.25):.0f}-{W.age.quantile(.75):.0f})", f"{B.age.median():.0f} ({B.age.quantile(.25):.0f}-{B.age.quantile(.75):.0f})")
+    add("Follow-up months, median (IQR)", f"{W.followup_months.median():.0f} ({W.followup_months.quantile(.25):.0f}-{W.followup_months.quantile(.75):.0f})", f"{B.followup_months.median():.0f} ({B.followup_months.quantile(.25):.0f}-{B.followup_months.quantile(.75):.0f})")
+    for lvl in [1, 2, 3, 4]:
+        add(f"T{lvl}", f"{(W.t_stage==lvl).sum()} ({100*(W.t_stage==lvl).mean():.0f}%)", f"{(B.t_stage==lvl).sum()} ({100*(B.t_stage==lvl).mean():.0f}%)")
+    for lvl in [0, 1, 2, 3]:
+        add(f"N{lvl}", f"{(W.n_stage==lvl).sum()} ({100*(W.n_stage==lvl).mean():.0f}%)", f"{(B.n_stage==lvl).sum()} ({100*(B.n_stage==lvl).mean():.0f}%)")
+    add("M1", f"{int((W.m_stage==1).sum())} ({100*(W.m_stage==1).mean():.1f}%)", f"{int((B.m_stage==1).sum())} ({100*(B.m_stage==1).mean():.1f}%)")
+    for s in ["LumA", "LumB", "Her2", "Basal", "Normal"]:
+        add(f"PAM50 {s}", f"{(W.subtype==s).sum()} ({100*(W.subtype==s).mean():.0f}%)", f"{(B.subtype==s).sum()} ({100*(B.subtype==s).mean():.0f}%)")
+    add("PAM50 not called", f"{W.subtype.isna().sum()} ({100*W.subtype.isna().mean():.0f}%)", f"{B.subtype.isna().sum()} ({100*B.subtype.isna().mean():.0f}%)")
+    for h in ["Ductal", "Lobular", "Other"]:
+        add(f"Histology {h}", f"{(W.histology==h).sum()} ({100*(W.histology==h).mean():.0f}%)", f"{(B.histology==h).sum()} ({100*(B.histology==h).mean():.0f}%)")
+    return pd.DataFrame(rows)

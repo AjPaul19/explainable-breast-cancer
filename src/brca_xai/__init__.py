@@ -1,1 +1,1 @@
-from .data import *  # noqa: F401,F403
+"""Recall-first, explainable and fairness-audited prediction of death during follow-up in TCGA-BRCA."""
