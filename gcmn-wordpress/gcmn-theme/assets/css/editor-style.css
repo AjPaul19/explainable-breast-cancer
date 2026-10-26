@@ -1,6 +1,0 @@
-/* Matches the public site while writing in the visual editor */
-body#tinymce.wp-editor{font-family:"Source Sans 3",system-ui,sans-serif;font-size:18px;line-height:1.7;color:#16213A;padding:12px}
-body#tinymce h2,body#tinymce h3,body#tinymce h4{font-family:Montserrat,system-ui,sans-serif;color:#223C70;line-height:1.2}
-body#tinymce a{color:#1B5FC1}
-body#tinymce blockquote{margin:1.4em 0;padding:4px 0 4px 20px;border-left:6px solid #FAD00A;font-weight:700;color:#223C70}
-body#tinymce img{max-width:100%;height:auto}
