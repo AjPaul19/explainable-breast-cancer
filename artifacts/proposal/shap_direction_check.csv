@@ -1,0 +1,5 @@
+feature,expected,spearman,agrees,mean_abs_shap
+Age at diagnosis,higher -> more risk,0.6461594254559027,True,0.23125329613685608
+Tumour size (T),higher -> more risk,0.8544992689012401,True,0.11595220118761063
+Nodal status (N),higher -> more risk,0.920905127811112,True,0.29899951815605164
+Distant metastasis (M),higher -> more risk,0.2592470233874172,True,0.12595924735069275

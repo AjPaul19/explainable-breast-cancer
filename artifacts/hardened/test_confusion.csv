@@ -1,0 +1,6 @@
+model,tp,fn,fp,tn,threshold
+"XGBoost (race-aware, primary)",27,3,112,75,0.3934739828109741
+XGBoost (race-blind),27,3,113,74,0.3833952844142914
+Logistic regression,27,3,130,57,0.3916082428062867
+Random forest,26,4,126,61,0.3238366907106032
+Stage-only (logistic),26,4,142,45,0.48730138292425235

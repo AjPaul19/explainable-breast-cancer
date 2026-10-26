@@ -89,11 +89,11 @@ def fig_roc(s, d):
     fig, ax = plt.subplots(figsize=(5.4, 5))
     for grp in D.GROUPS:
         f, t = s.roc[grp]
-        a = s.auc_group[(s.auc_group.strategy == "blind") & (s.auc_group.group == grp)].iloc[0]
+        a = s.auc_group[(s.auc_group.strategy == s.main) & (s.auc_group.group == grp)].iloc[0]
         ax.plot(f, t, color=COL[grp], lw=2, label=f"{grp}: AUC {a.auc:.2f} [{a.lo:.2f}-{a.hi:.2f}]")
     ax.plot([0, 1], [0, 1], color="#999", ls="--", lw=1)
     ax.axhline(s.target, color=INK, lw=.8, ls=":"); ax.text(.02, s.target + .015, f"recall target {s.target:.0%}", fontsize=8)
-    ax.set(xlabel="False-positive rate", ylabel="Recall (true-positive rate)", title="ROC by race (out-of-fold, race-blind model)")
+    ax.set(xlabel="False-positive rate", ylabel="Recall (true-positive rate)", title="ROC by race (out-of-fold)")
     ax.legend(frameon=False, loc="lower right")
     _save(fig, "04_roc_by_group.png", d)
 
@@ -170,20 +170,22 @@ def fig_holdout(s, d):
 
 def fig_calibration(s, d):
     fig, ax = plt.subplots(figsize=(5.4, 5))
-    p = s.oof_mean["blind"]
-    bins = np.array([0, .08, .12, .16, .22, 1])
+    raw = np.clip(s.oof_mean[s.main], 1e-4, 1 - 1e-4)
+    a, b_ = s.platt[s.main]["intercept"], s.platt[s.main]["slope"]
+    p = 1 / (1 + np.exp(-(a + b_ * np.log(raw / (1 - raw)))))          # one shared Platt mapping for both groups
+    bins = np.quantile(p, [0, .25, .5, .75, 1.0]); bins[-1] += 1e-9
     for grp in D.GROUPS:
         m = s.g == grp
         idx = np.digitize(p[m], bins[1:-1])
-        xs, ys, ns = [], [], []
-        for b in range(len(bins) - 1):
-            mm = idx == b
+        xs, ys = [], []
+        for bb in range(len(bins) - 1):
+            mm = idx == bb
             if mm.sum() >= 8:
-                xs.append(p[m][mm].mean()); ys.append(s.y[m][mm].mean()); ns.append(mm.sum())
+                xs.append(p[m][mm].mean()); ys.append(s.y[m][mm].mean())
         ax.plot(xs, ys, marker="o", color=COL[grp], lw=2, label=grp)
-    lim = .5
-    ax.plot([0, lim], [0, lim], color="#999", ls="--"); ax.set(xlim=(0, .35), ylim=(0, .35), xlabel="Mean predicted risk", ylabel="Observed death rate",
-                                                        title="Calibration by race (out-of-fold, race-blind)")
+    lim = float(max(p.max(), .5))
+    ax.plot([0, lim], [0, lim], color="#999", ls="--"); ax.set(xlim=(0, lim), ylim=(0, lim), xlabel="Recalibrated predicted risk", ylabel="Observed death rate",
+                                                       title="Calibration by race (out-of-fold, shared Platt mapping)")
     ax.legend(frameon=False)
     _save(fig, "10_calibration.png", d)
 
@@ -208,12 +210,12 @@ def fig_sensitivity(s, d):
 
 # ---------------------------------------------------------------------------------------------
 def fig_shap_global(s, d):
-    sv = s.sv["blind"]
+    sv = s.sv[s.main]
     fig = plt.figure(figsize=(7.6, 4.6))
-    ex = shap.Explanation(sv.to_numpy(), base_values=np.full(len(sv), s.base["blind"]), data=s.X[D.FEATURES_BLIND].to_numpy(),
-                          feature_names=[D.LABELS[f] for f in D.FEATURES_BLIND])
+    ex = shap.Explanation(sv.to_numpy(), base_values=np.full(len(sv), s.base[s.main]), data=s.X[s.feats].to_numpy(),
+                          feature_names=[D.LABELS[f] for f in s.feats])
     shap.plots.beeswarm(ex, max_display=10, show=False, plot_size=None)
-    plt.title("SHAP summary: what drives predicted risk of death (race-blind model)")
+    plt.title("SHAP summary: what drives predicted risk of death")
     _save(plt.gcf(), "12_shap_beeswarm.png", d)
 
 
@@ -229,9 +231,9 @@ def fig_importance_group(s, d):
 
 
 def fig_dependence(s, d):
-    sv, X = s.sv["blind"], s.X
+    sv, X = s.sv[s.main], s.X
     fig, ax = plt.subplots(1, 3, figsize=(12, 3.6))
-    for a, f in zip(ax, ["age", "n_stage", "t_stage"]):
+    for a, f in zip(ax, [f for f in ["age", "n_stage", "n_stage_h", "t_stage"] if f in s.feats][:3]):
         for grp in D.GROUPS:
             m = s.g == grp
             jitter = np.random.default_rng(0).normal(0, .06, m.sum()) if f != "age" else 0
@@ -242,17 +244,17 @@ def fig_dependence(s, d):
 
 
 def fig_waterfalls(s, d):
-    f = s.flags["blind"][0]
+    f = s.flags[s.main][0]
     cases = {}
     for name, m in [("true_positive_black", (s.y == 1) & (f == 1) & (s.g == D.UNPRIVILEGED)),
                     ("false_negative_black", (s.y == 1) & (f == 0) & (s.g == D.UNPRIVILEGED)),
                     ("true_negative_white", (s.y == 0) & (f == 0) & (s.g == D.PRIVILEGED))]:
         idx = np.where(m)[0]
         if len(idx):
-            cases[name] = idx[np.argsort(s.oof_mean["blind"][idx])[len(idx) // 2]]
+            cases[name] = idx[np.argsort(s.oof_mean[s.main][idx])[len(idx) // 2]]
     for name, i in cases.items():
-        ex = shap.Explanation(s.sv["blind"].iloc[i].to_numpy(), base_values=s.base["blind"], data=s.X[D.FEATURES_BLIND].iloc[i].to_numpy(),
-                              feature_names=[D.LABELS[k] for k in D.FEATURES_BLIND])
+        ex = shap.Explanation(s.sv[s.main].iloc[i].to_numpy(), base_values=s.base[s.main], data=s.X[s.feats].iloc[i].to_numpy(),
+                              feature_names=[D.LABELS[k] for k in s.feats])
         plt.figure(figsize=(7, 4))
         shap.plots.waterfall(ex, max_display=8, show=False)
         plt.title(f"{name.replace('_', ' ').title()}  ({s.c.patient_id.iloc[i]})", fontsize=10)
@@ -272,7 +274,7 @@ def fig_gap_decomp(s, d):
 def fig_profile(s, d):
     p = s.profile
     p = p[p.outcome.isin(["TP (caught death)", "FN (missed death)"])]
-    feats = ["age", "n_stage", "t_stage", "sub_luma", "sub_basal", "histology_lobular"]
+    feats = list(s.imp_group.index[:6])
     fig, ax = plt.subplots(1, 2, figsize=(10.5, 3.8), sharey=True)
     for a, grp in zip(ax, D.GROUPS):
         q = p[p.group == grp].set_index("outcome")[feats].T
@@ -312,12 +314,12 @@ def fig_mitigation_explanations(s, d):
 
 
 def fig_workflow(s, d):
-    steps = [("1 Data audit", "38 columns -> governance\nleakage & missingness\nWhite/Black cohort"),
-             ("2 Model", "XGBoost, monotone TNM\n5x4-fold tuning\nbenchmarks"),
+    steps = [("1 Data audit", "38 columns -> governance\nleakage & missingness\nTable 3.2 predictors"),
+             ("2 Model", "XGBoost + class weights\nBayesian tuning, 5-fold CV\nbaselines, 80/20 split"),
              ("3 Recall-first", "threshold = highest score\ncatching 80 % of deaths\n(learned in-fold)"),
-             ("4 Fairness", "5 strategies x 25 folds\nbootstrap CI, paired\nsensitivity analyses"),
-             ("5 SHAP", "global / local / by race\nrisk-gap decomposition\nrank stability"),
-             ("6 Dashboard", "patient explainer\nfairness lab\nthreshold explorer")]
+             ("4 SHAP", "global / local / by race\nfidelity, stability,\nclinical alignment"),
+             ("5 Fairness (ext.)", "5 strategies x 25 folds\nbootstrap, paired CI\nsensitivity analyses"),
+             ("6 Dashboard", "patient explainer\nfairness lab\nuser-study kit")]
     fig, ax = plt.subplots(figsize=(11.5, 2.6)); ax.axis("off"); ax.set_xlim(0, 6); ax.set_ylim(0, 1)
     for i, (t, b) in enumerate(steps):
         ax.add_patch(plt.Rectangle((i + .06, .12), .88, .76, fc="#EEF3F8", ec=CW, lw=1.4, joinstyle="round"))
@@ -328,11 +330,123 @@ def fig_workflow(s, d):
     _save(fig, "00_workflow.png", d)
 
 
+def fig_framework(s, d):
+    """Conceptual framework (proposal 3.2.8): where SHAP sits in a clinical decision-support pipeline."""
+    fig, ax = plt.subplots(figsize=(11.5, 4.4)); ax.axis("off"); ax.set_xlim(0, 12); ax.set_ylim(0, 4.4)
+    boxes = [(0.2, 2.6, "Data input", "baseline clinicopathological\nrecord (T, N, M, age, PAM50 ...)"),
+             (2.5, 2.6, "Risk prediction", "XGBoost score +\nrecall-first threshold"),
+             (4.8, 2.6, "Explanation", "SHAP waterfall (local)\nSHAP summary (global)"),
+             (7.1, 2.6, "Clinician review", "plausibility check vs\nprognostic knowledge"),
+             (9.4, 2.6, "Decision", "closer follow-up / usual care\n(clinician decides)")]
+    for x, y, t, b in boxes:
+        ax.add_patch(plt.Rectangle((x, y), 2.1, 1.3, fc="#EEF3F8", ec=CW, lw=1.4))
+        ax.text(x + 1.05, y + 1.0, t, ha="center", fontweight="bold", fontsize=10)
+        ax.text(x + 1.05, y + .45, b, ha="center", va="center", fontsize=8)
+    for x in [2.3, 4.6, 6.9, 9.2]:
+        ax.annotate("", xy=(x + .2, 3.25), xytext=(x, 3.25), arrowprops=dict(arrowstyle="->", lw=1.4))
+    gates = [(0.2, 0.3, "Governance gate", "leakage ladder, informative-\nmissingness audit"),
+             (4.8, 0.3, "Trust checks", "fidelity, stability, direction,\nrace-attribution check"),
+             (9.4, 0.3, "Feedback & monitoring", "group-wise recall / false-alarm\nrates with CI; user study")]
+    for x, y, t, b in gates:
+        ax.add_patch(plt.Rectangle((x, y), 2.1, 1.1, fc="#FDF1F3", ec=CB, lw=1.4))
+        ax.text(x + 1.05, y + .82, t, ha="center", fontweight="bold", fontsize=9)
+        ax.text(x + 1.05, y + .37, b, ha="center", va="center", fontsize=7.5)
+    for x in (1.25, 5.85, 10.45):
+        ax.annotate("", xy=(x, 2.6), xytext=(x, 1.4), arrowprops=dict(arrowstyle="->", color=CB, lw=1.2, ls="--"))
+    ax.text(6.0, 2.05, "outcomes and clinician feedback re-enter model updates", fontsize=8, color="#555", ha="center")
+    _save(fig, "20_conceptual_framework.png", d)
+
+
+def fig_learning_curve(s, d):
+    c = s.curve
+    fig, ax = plt.subplots(figsize=(6.4, 4))
+    ax.plot(c.trees, c.train, color=GREY, lw=2, label="Training (dev set)")
+    ax.plot(c.trees, c.cv, color=CW, lw=2, label="5-fold CV (dev set)")
+    ax.fill_between(c.trees, c.cv - c.cv_sd, c.cv + c.cv_sd, color=CW, alpha=.15)
+    ax.plot(c.trees, c.test, color=CB, lw=2, label="Hold-out test")
+    ax.axvline(s.params["n_estimators"], color=INK, ls=":", lw=1)
+    ax.set(xlabel="Boosting rounds", ylabel="AUC", title="Overfitting control: train vs CV vs test AUC")
+    ax.legend(frameon=False)
+    _save(fig, "21_learning_curve.png", d)
+
+
+def fig_pr(s, d):
+    from sklearn.metrics import precision_recall_curve
+    yte = s.y[~s.dev]; p = s.holdout_probs[s.main]
+    pr, rc, _ = precision_recall_curve(yte, p)
+    fig, ax = plt.subplots(figsize=(6.4, 4.6))
+    ax.plot(rc, pr, color=CW, lw=2, label="Hold-out PR curve")
+    ax.axhline(yte.mean(), color="#999", ls="--", lw=1)
+    ax.text(.02, yte.mean() + .012, f"no-skill = prevalence {yte.mean():.2f}", fontsize=8)
+    for _, r in s.rule_table.iterrows():
+        ax.scatter(r.recall, r.precision, s=50, zorder=3, color=CB if "primary" in r.rule else INK)
+        ax.annotate(r.rule.replace(" (primary)", "*"), (r.recall, r.precision), textcoords="offset points", xytext=(5, 4), fontsize=7)
+    ax.set(xlabel="Recall", ylabel="Precision", ylim=(0, 1.02), title="Hold-out precision-recall; points = threshold rules (* primary)")
+    ax.legend(frameon=False, loc="upper right")
+    _save(fig, "22_precision_recall.png", d)
+
+
+def fig_test_forest(s, d):
+    t = s.test_metrics
+    models = [m for m in t.model.unique() if "Always" not in m]
+    fig, ax = plt.subplots(1, 3, figsize=(11.5, 3.6), sharey=True)
+    y = np.arange(len(models))[::-1]
+    for a, metric, title in zip(ax, ["recall", "auc_roc", "pr_auc"], ["Recall", "AUC-ROC", "PR-AUC"]):
+        for yi, m in zip(y, models):
+            r = t[(t.model == m) & (t.metric == metric)].iloc[0]
+            a.errorbar(r.estimate, yi, xerr=[[r.estimate - r.lo], [r.hi - r.estimate]], fmt="o", color=CB if "primary" in m else INK, capsize=3)
+        a.set_title(title)
+    ax[2].axvline(s.y[~s.dev].mean(), color="#999", ls="--", lw=1)
+    ax[0].set_yticks(y, models, fontsize=8)
+    fig.suptitle("Hold-out test performance, bootstrap 95 % CI (dashed = no-skill PR-AUC)", y=1.02, fontsize=10)
+    _save(fig, "23_test_forest.png", d)
+
+
+def fig_ablation(s, d):
+    if not hasattr(s, "ablation"):
+        return
+    a = s.ablation.iloc[::-1]
+    fig, ax = plt.subplots(figsize=(8.8, 4))
+    ax.barh(a.variant, a.auc, color=[CB if i == len(a) - 1 else GREY for i in range(len(a))], height=.6)
+    for i, v in enumerate(a.auc):
+        ax.text(v + .004, i, f"{v:.3f}", va="center", fontsize=9)
+    ax.set(xlim=(.5, .8), xlabel="Cross-validated AUC", title="Where the proposal specification's extra AUC comes from")
+    _save(fig, "24_artefact_ablation.png", d)
+
+
+def fig_race_missing(s, d):
+    r = s.race_shap
+    if r.empty:
+        return
+    fig, ax = plt.subplots(1, 2, figsize=(9, 3.4))
+    ax[0].bar(r.patients, r.share_of_total_attribution, color=[CW, CB], width=.55)
+    ax[0].set(ylabel="Share of total |SHAP| in race columns", title="Race attribution")
+    ax[1].bar(r.patients, r.death_rate, color=[CW, CB], width=.55)
+    ax[1].set(ylabel="Death rate", title="Observed mortality")
+    for a_, col in zip(ax, ["share_of_total_attribution", "death_rate"]):
+        for i, v in enumerate(r[col]):
+            a_.text(i, v + .005, f"{v:.0%}", ha="center", fontsize=9)
+    _save(fig, "25_race_missing_signal.png", d)
+
+
+def fig_deletion(s, d):
+    t = s.deletion
+    fig, ax = plt.subplots(figsize=(5.6, 3.8))
+    ax.plot(t.k, t.auc_top_shap, marker="o", color=CB, lw=2, label="remove the k most-attributed features")
+    ax.plot(t.k, t.auc_random, marker="o", color=GREY, lw=2, label="remove k random features")
+    ax.set(xlabel="k features blanked per patient", ylabel="AUC", title="Faithfulness (deletion) test")
+    ax.legend(frameon=False, fontsize=8)
+    _save(fig, "26_deletion_test.png", d)
+
+
 def make_all(s, fig_dir=None):
-    from .pipeline import FIG
-    d = fig_dir or FIG
-    for fn in [fig_workflow, fig_followup, fig_leakage, fig_benchmark, fig_roc, fig_group_rates, fig_gaps, fig_tradeoff, fig_sweep,
-               fig_holdout, fig_calibration, fig_sensitivity, fig_shap_global, fig_importance_group, fig_dependence,
-               fig_waterfalls, fig_gap_decomp, fig_profile, fig_stability, fig_mitigation_explanations]:
+    d = fig_dir or s.fig
+    fns = [fig_workflow, fig_framework, fig_followup, fig_benchmark, fig_roc, fig_group_rates, fig_gaps, fig_tradeoff, fig_sweep,
+           fig_holdout, fig_calibration, fig_sensitivity, fig_shap_global, fig_importance_group, fig_dependence,
+           fig_waterfalls, fig_gap_decomp, fig_profile, fig_stability, fig_mitigation_explanations,
+           fig_learning_curve, fig_pr, fig_test_forest, fig_race_missing, fig_deletion]
+    if hasattr(s, "ladder"):
+        fns += [fig_leakage, fig_ablation]
+    for fn in fns:
         fn(s, d)
     return d

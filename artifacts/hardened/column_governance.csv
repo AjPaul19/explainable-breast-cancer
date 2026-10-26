@@ -1,0 +1,38 @@
+column,decision,reason,audit_note
+AGE,Included (predictor),-> age,
+SUBTYPE,Included (predictor),-> sub_*,103 missing; native missing
+PATH_T_STAGE,Included (predictor),-> t_stage,TX -> missing
+PATH_N_STAGE,Included (predictor),-> n_stage,NX -> missing; NX has a 61 % death rate (audit)
+PATH_M_STAGE,Included (predictor),-> m_stage,MX -> missing
+ICD_O_3_HISTOLOGY,Included (predictor),-> histology_*,ductal / lobular / other
+RACE,Included (predictor),"-> race_black, race_asian",also the fairness group; 90 not recorded
+RADIATION_THERAPY,Included (predictor),-> radiation,101 blanks; death rate 42 % when blank vs 11 % recorded -> informative missingness (audit)
+HISTORY_NEOADJUVANT_TRTYN,Included (predictor),-> neoadjuvant,only 6 'Yes'
+PRIOR_DX,Included (predictor),-> prior_dx,
+OS_MONTHS,Excluded: outcome-related (leakage),follow-up time that defines the outcome,
+DAYS_LAST_FOLLOWUP,Excluded: outcome-related (leakage),follow-up time; blank for every patient who died,
+DSS_STATUS,Excluded: outcome-related (leakage),disease-specific death: a subset of the outcome,
+DSS_MONTHS,Excluded: outcome-related (leakage),survival time,
+DFS_STATUS,Excluded: outcome-related (leakage),recurrence after treatment: known only after follow-up,
+DFS_MONTHS,Excluded: outcome-related (leakage),survival time,
+PFS_STATUS,Excluded: outcome-related (leakage),progression: known only after follow-up,
+PFS_MONTHS,Excluded: outcome-related (leakage),survival time,
+PERSON_NEOPLASM_CANCER_STATUS,Excluded: outcome-related (leakage),tumour status at last follow-up (outcome proxy),
+NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT,Excluded: outcome-related (leakage),post-treatment event (outcome proxy),
+AJCC_PATHOLOGIC_TUMOR_STAGE,Excluded: redundant or sparse,"composite of T, N, M (used only in the stage-group sensitivity model)",
+DAYS_TO_BIRTH,Excluded: redundant or sparse,duplicates age,
+GENETIC_ANCESTRY_LABEL,Excluded: redundant or sparse,overlaps race (used only in the ancestry sensitivity analysis),
+ETHNICITY,Excluded: redundant or sparse,169 missing; blanks track the outcome (6 % deaths when blank vs 15 % when recorded),
+PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT,Excluded: redundant or sparse,"36 % missing, post-operative; not in the proposal's predictor list",
+PATIENT_ID,Excluded: uninformative or constant,identifier,
+OTHER_PATIENT_ID,Excluded: uninformative or constant,identifier,
+CANCER_TYPE_ACRONYM,Excluded: uninformative or constant,constant (BRCA),
+ICD_10,Excluded: uninformative or constant,constant (C50.9),
+ICD_O_3_SITE,Excluded: uninformative or constant,constant,
+INFORMED_CONSENT_VERIFIED,Excluded: uninformative or constant,constant,
+FORM_COMPLETION_DATE,Excluded: uninformative or constant,administrative date,
+AJCC_STAGING_EDITION,Excluded: uninformative or constant,administrative; missingness differs by race,
+IN_PANCANPATHWAYS_FREEZE,Excluded: uninformative or constant,administrative (equals SUBTYPE missingness),
+WEIGHT,Excluded: uninformative or constant,100 % missing,
+SEX,Excluded: uninformative or constant,98.9 % female (12 male patients),
+OS_STATUS,Target,1:DECEASED -> died = 1,

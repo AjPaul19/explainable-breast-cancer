@@ -1,94 +1,97 @@
 # Data audit
 
-Source: `data/data_clinical_patient.csv` (cBioPortal, TCGA PanCancer Atlas BRCA clinical patient table, 1,084 rows x 38 columns) with the
-definitions in `data/clinical_data_dictionary.xlsx`.
+Source: `data/data_clinical_patient.csv` (cBioPortal, TCGA PanCancer Atlas BRCA clinical patient table, 1,084 rows x 38 columns) with `data/clinical_data_dictionary.xlsx`.
 
-## Cohort flow
-| Step | n |
-|---|---|
-| Records in file | 1084 |
-| Race not recorded | -90 |
-| Asian / American Indian | -61 |
-| **Study cohort (White or Black)** | **933** (751 White, 182 Black) |
-| Deaths | 141 (111 White, 30 Black) |
-| Development / hold-out | 746 / 187 (hold-out: 37 Black patients, 6 deaths) |
+## Cohort
+1,084 patients; 151 deaths (13.9%); 751 White, 182 Black, 60 Asian, 91 race not recorded (+1 Native American, counted as not recorded).
+Development / hold-out: 867 / 217 (37 Black patients and 6 Black deaths in the hold-out).
 
-## What each column is allowed to do
-| column | decision | reason |
-|---|---|---|
-| OS_MONTHS | Excluded: outcome leakage / post-baseline | the follow-up time that defines the outcome |
-| DAYS_LAST_FOLLOWUP | Excluded: outcome leakage / post-baseline | follow-up time; blank for 100 % of deaths in the cohort (another label) |
-| DSS_STATUS | Excluded: outcome leakage / post-baseline | disease-specific death: a subset of the outcome |
-| DSS_MONTHS | Excluded: outcome leakage / post-baseline | survival time |
-| DFS_STATUS | Excluded: outcome leakage / post-baseline | recurrence after treatment: only known after follow-up |
-| DFS_MONTHS | Excluded: outcome leakage / post-baseline | survival time |
-| PFS_STATUS | Excluded: outcome leakage / post-baseline | progression: only known after follow-up |
-| PFS_MONTHS | Excluded: outcome leakage / post-baseline | survival time |
-| PERSON_NEOPLASM_CANCER_STATUS | Excluded: outcome leakage / post-baseline | tumour status at last follow-up (post-baseline, outcome proxy) |
-| NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT | Excluded: outcome leakage / post-baseline | post-treatment event (post-baseline, outcome proxy) |
-| DAYS_TO_INITIAL_PATHOLOGIC_DIAGNOSIS | Excluded: outcome leakage / post-baseline | constant 0 reference day |
-| FORM_COMPLETION_DATE | Excluded: outcome leakage / post-baseline | administrative date |
-| RADIATION_THERAPY | Excluded: informative missingness | missing for 56 % deaths vs 12 % otherwise: a documentation artefact |
-| ETHNICITY | Excluded: informative missingness | missing for 4 % deaths vs 16 % otherwise: reporting practice, not biology |
-| PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT | Excluded: informative missingness | 36 % missing and largely post-operative |
-| AJCC_STAGING_EDITION | Excluded: informative missingness | an administrative variable whose missingness differs by race (126 of 751 White vs 8 of 182 Black) |
-| PATIENT_ID | Excluded: no signal / redundant | identifier |
-| OTHER_PATIENT_ID | Excluded: no signal / redundant | identifier |
-| CANCER_TYPE_ACRONYM | Excluded: no signal / redundant | constant (BRCA) |
-| ICD_10 | Excluded: no signal / redundant | constant (C50.9) |
-| ICD_O_3_SITE | Excluded: no signal / redundant | constant |
-| INFORMED_CONSENT_VERIFIED | Excluded: no signal / redundant | constant |
-| WEIGHT | Excluded: no signal / redundant | 100 % missing |
-| IN_PANCANPATHWAYS_FREEZE | Excluded: no signal / redundant | administrative (equals SUBTYPE missingness) |
-| DAYS_TO_BIRTH | Excluded: no signal / redundant | redundant with AGE |
-| SEX | Excluded: no signal / redundant | 12 male patients: too few to model |
-| HISTORY_NEOADJUVANT_TRTYN | Excluded: no signal / redundant | only 6 'Yes' |
-| AJCC_PATHOLOGIC_TUMOR_STAGE | Excluded: no signal / redundant | redundant with T, N, M |
-| GENETIC_ANCESTRY_LABEL | Excluded: no signal / redundant | used only for the sensitivity analysis, never as an input |
-| AGE | Kept as model input | -> age |
-| PATH_T_STAGE | Kept as model input | -> t_stage |
-| PATH_N_STAGE | Kept as model input | -> n_stage |
-| PATH_M_STAGE | Kept as model input | -> m_stage |
-| SUBTYPE | Kept as model input | -> sub_* |
-| ICD_O_3_HISTOLOGY | Kept as model input | -> histology_* |
-| PRIOR_DX | Kept as model input | -> prior_dx |
-| RACE | Kept as model input | -> race_black (aware model only) and the fairness group |
-| OS_STATUS | Target | 1:DECEASED -> died = 1 |
+## Column governance (revised proposal Table 3.2 plus audit notes)
+| column | decision | reason | audit_note |
+|---|---|---|---|
+| AGE | Included (predictor) | -> age | nan |
+| SUBTYPE | Included (predictor) | -> sub_* | 103 missing; native missing |
+| PATH_T_STAGE | Included (predictor) | -> t_stage | TX -> missing |
+| PATH_N_STAGE | Included (predictor) | -> n_stage | NX -> missing; NX has a 61 % death rate (audit) |
+| PATH_M_STAGE | Included (predictor) | -> m_stage | MX -> missing |
+| ICD_O_3_HISTOLOGY | Included (predictor) | -> histology_* | ductal / lobular / other |
+| RACE | Included (predictor) | -> race_black, race_asian | also the fairness group; 90 not recorded |
+| RADIATION_THERAPY | Included (predictor) | -> radiation | 101 blanks; death rate 42 % when blank vs 11 % recorded -> informative missingness (audit) |
+| HISTORY_NEOADJUVANT_TRTYN | Included (predictor) | -> neoadjuvant | only 6 'Yes' |
+| PRIOR_DX | Included (predictor) | -> prior_dx | nan |
+| OS_MONTHS | Excluded: outcome-related (leakage) | follow-up time that defines the outcome | nan |
+| DAYS_LAST_FOLLOWUP | Excluded: outcome-related (leakage) | follow-up time; blank for every patient who died | nan |
+| DSS_STATUS | Excluded: outcome-related (leakage) | disease-specific death: a subset of the outcome | nan |
+| DSS_MONTHS | Excluded: outcome-related (leakage) | survival time | nan |
+| DFS_STATUS | Excluded: outcome-related (leakage) | recurrence after treatment: known only after follow-up | nan |
+| DFS_MONTHS | Excluded: outcome-related (leakage) | survival time | nan |
+| PFS_STATUS | Excluded: outcome-related (leakage) | progression: known only after follow-up | nan |
+| PFS_MONTHS | Excluded: outcome-related (leakage) | survival time | nan |
+| PERSON_NEOPLASM_CANCER_STATUS | Excluded: outcome-related (leakage) | tumour status at last follow-up (outcome proxy) | nan |
+| NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT | Excluded: outcome-related (leakage) | post-treatment event (outcome proxy) | nan |
+| AJCC_PATHOLOGIC_TUMOR_STAGE | Excluded: redundant or sparse | composite of T, N, M (used only in the stage-group sensitivity model) | nan |
+| DAYS_TO_BIRTH | Excluded: redundant or sparse | duplicates age | nan |
+| GENETIC_ANCESTRY_LABEL | Excluded: redundant or sparse | overlaps race (used only in the ancestry sensitivity analysis) | nan |
+| ETHNICITY | Excluded: redundant or sparse | 169 missing; blanks track the outcome (6 % deaths when blank vs 15 % when recorded) | nan |
+| PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT | Excluded: redundant or sparse | 36 % missing, post-operative; not in the proposal's predictor list | nan |
+| PATIENT_ID | Excluded: uninformative or constant | identifier | nan |
+| OTHER_PATIENT_ID | Excluded: uninformative or constant | identifier | nan |
+| CANCER_TYPE_ACRONYM | Excluded: uninformative or constant | constant (BRCA) | nan |
+| ICD_10 | Excluded: uninformative or constant | constant (C50.9) | nan |
+| ICD_O_3_SITE | Excluded: uninformative or constant | constant | nan |
+| INFORMED_CONSENT_VERIFIED | Excluded: uninformative or constant | constant | nan |
+| FORM_COMPLETION_DATE | Excluded: uninformative or constant | administrative date | nan |
+| AJCC_STAGING_EDITION | Excluded: uninformative or constant | administrative; missingness differs by race | nan |
+| IN_PANCANPATHWAYS_FREEZE | Excluded: uninformative or constant | administrative (equals SUBTYPE missingness) | nan |
+| WEIGHT | Excluded: uninformative or constant | 100 % missing | nan |
+| SEX | Excluded: uninformative or constant | 98.9 % female (12 male patients) | nan |
+| OS_STATUS | Target | 1:DECEASED -> died = 1 | nan |
 
-## Evidence 1: informative missingness
-A blank is not neutral if it predicts the outcome. Death rates inside the White + Black cohort:
-
+## Evidence 1: blanks that carry the outcome
 | Column / code | n | % of cohort | Death rate if missing | Death rate if recorded |
 |---|---|---|---|---|
-| SUBTYPE | 96 | 10.289 | 0.198 | 0.146 |
-| RADIATION_THERAPY | 71 | 7.610 | 0.563 | 0.117 |
-| ETHNICITY | 81 | 8.682 | 0.037 | 0.162 |
-| PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT | 266 | 28.510 | 0.173 | 0.142 |
-| PERSON_NEOPLASM_CANCER_STATUS | 111 | 11.897 | 0.216 | 0.142 |
-| NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT | 155 | 16.613 | 0.323 | 0.117 |
-| AJCC_STAGING_EDITION | 134 | 14.362 | 0.119 | 0.156 |
-| DAYS_LAST_FOLLOWUP | 98 | 10.504 | 1.000 | 0.051 |
-| PATH_N_STAGE = NX | 18 | 1.929 | 0.611 | 0.142 |
-| PATH_M_STAGE = MX | 154 | 16.506 | 0.091 | 0.163 |
+| SUBTYPE | 103 | 9.502 | 0.184 | 0.135 |
+| RADIATION_THERAPY | 101 | 9.317 | 0.416 | 0.111 |
+| ETHNICITY | 169 | 15.590 | 0.059 | 0.154 |
+| PRIMARY_LYMPH_NODE_PRESENTATION_ASSESSMENT | 364 | 33.579 | 0.148 | 0.135 |
+| RACE | 90 | 8.303 | 0.078 | 0.145 |
+| PERSON_NEOPLASM_CANCER_STATUS | 123 | 11.347 | 0.211 | 0.130 |
+| NEW_TUMOR_EVENT_AFTER_INITIAL_TREATMENT | 199 | 18.358 | 0.281 | 0.107 |
+| AJCC_STAGING_EDITION | 140 | 12.915 | 0.121 | 0.142 |
+| DAYS_LAST_FOLLOWUP | 104 | 9.594 | 1.000 | 0.048 |
+| PATH_N_STAGE = NX | 20 | 1.845 | 0.550 | 0.132 |
+| PATH_M_STAGE = MX | 162 | 14.945 | 0.086 | 0.149 |
+| PATH_T_STAGE = TX | 3 | 0.277 | 0.333 | 0.139 |
 
-Consequences: radiation, ethnicity and the node-presentation field are dropped; `NX` is treated as N0 and `MX` as M0 (AJCC convention),
-so the model cannot reward "not assessed".
+## Evidence 2: where the as-proposed AUC comes from
+| variant | auc | pr_auc |
+|---|---|---|
+| Proposal predictors (as specified) | 0.758 | 0.466 |
+| minus radiation therapy (blank = 42 % death) | 0.699 | 0.343 |
+| minus race recorded / not recorded signal (unknown -> White) | 0.746 | 0.394 |
+| minus NX / MX codes (NX -> N0, MX -> M0) | 0.737 | 0.445 |
+| minus all three artefacts | 0.648 | 0.294 |
+| minus all three and neoadjuvant (= audit-hardened) | 0.649 | 0.298 |
+| race-blind proposal predictors | 0.738 | 0.389 |
 
-## Evidence 2: the leakage ladder
-Cross-validated AUC of the same XGBoost as columns that should not be inputs are added back:
+## Evidence 3: the leakage ladder
+| Feature set | Why | AUC | PR-AUC | Precision at 80% recall |
+|---|---|---|---|---|
+| 0  Audit-hardened features | Age, T, N (NX->N0), M (MX->M0), PAM50, histology, prior dx, race | 0.666 | 0.314 | 0.181 |
+| 1  Proposal Table 3.2 predictors (as specified) | Adds radiation therapy, neoadjuvant; NX / MX / TX left missing | 0.758 | 0.466 | 0.209 |
+| 2  + ethnicity and node-assessment | Excluded by the proposal: blanks track the outcome | 0.768 | 0.476 | 0.220 |
+| 3  + tumour status & new tumour event at follow-up | Outcome proxies recorded after diagnosis | 0.880 | 0.636 | 0.384 |
+| 4  + days to last follow-up | Blank for every patient who died | 0.945 | 0.891 | 0.798 |
 
-| Feature set | Why | AUC | FPR @ 80% recall |
-|---|---|---|---|
-| 0  Clean pre-treatment features (used) | Age, T, N (NX->N0), M (MX->M0), PAM50, histology, prior diagnosis | 0.657 | 0.596 |
-| 1  + NX / MX left as 'missing' | Registry 'not assessed' codes: NX has a 61 % death rate | 0.678 | 0.560 |
-| 2  + radiation, ethnicity, node-assessment (informative missingness) | Their blanks track the outcome (56 % vs 12 % for radiation) | 0.755 | 0.514 |
-| 3  + tumour status & new-tumour event at follow-up (post-baseline) | Outcome proxies recorded after diagnosis | 0.859 | 0.303 |
-| 4  + days to last follow-up | Blank for every patient who died | 0.914 | 0.080 |
-
-An unprotected analysis would report AUC around 0.9 and look excellent; none of that is prediction (follow-up time is blank for every patient who died).
+## Evidence 4: specifications compared
+| spec | n_features | auc | pr_auc | fpr_at_80_recall | precision_at_80_recall |
+|---|---|---|---|---|---|
+| proposal | 16 | 0.758 | 0.466 | 0.490 | 0.209 |
+| stage_group | 14 | 0.706 | 0.366 | 0.551 | 0.191 |
+| hardened | 14 | 0.666 | 0.314 | 0.586 | 0.181 |
+| complete_case_subtype | 16 | 0.752 | 0.468 | 0.493 | 0.203 |
 
 ## Other checks
-* Patient IDs unique (0 duplicates); T, N, M parsed to ordinal categories (`T1C -> 1`, `N1MI -> 1`, `N0 (I+) -> 0`, `CM0 (I+) -> M0`); TX (3 patients) stays missing.
-* PAM50 subtype is missing for 96 patients; XGBoost treats unknown natively. The missing group's death rate is 19.8% vs 14.6%: a mild shift, kept as `unknown`.
-* `WEIGHT` is 100 % empty. `SEX`: 12 male patients, not modelled.
-* Follow-up is similar across races (median 32 (17-62) months White vs 27 (15-54) Black).
+* IDs unique; T, N, M parsed to ordinals (`T1C -> 1`, `N1MI -> 1`, `N0 (I+) -> 0`, `cM0 (I+) -> 0`); stage group parsed from `AJCC_PATHOLOGIC_TUMOR_STAGE` for the stage-group sensitivity model.
+* PAM50 missing for 103 patients (death rate 18.4% vs 13.5%); complete-case sensitivity analysis in the specs table.
+* Race not recorded: 90 patients, death rate 7.8% vs 14.5%.

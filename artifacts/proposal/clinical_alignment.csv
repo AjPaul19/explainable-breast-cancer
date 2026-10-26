@@ -1,0 +1,6 @@
+rank,feature,mean_abs_shap,established_prognostic_factor
+1,Radiation therapy,0.33469274640083313,no (administrative / treatment-documentation field)
+2,Nodal status (N),0.29899951815605164,Nodal status
+3,Age at diagnosis,0.23125329613685608,Age at diagnosis
+4,Race: Asian,0.15173651278018951,no (administrative / treatment-documentation field)
+5,Distant metastasis (M),0.12595924735069275,Metastasis

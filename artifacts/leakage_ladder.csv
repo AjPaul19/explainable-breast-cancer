@@ -1,6 +1,0 @@
-rung,n_features,note,auc,auc_sd,fpr_at_80_recall
-0  Clean pre-treatment features (used),12,"Age, T, N (NX->N0), M (MX->M0), PAM50, histology, prior diagnosis",0.6568334049717028,0.009491623283861609,0.5959595959595959
-1  + NX / MX left as 'missing',12,Registry 'not assessed' codes: NX has a 61 % death rate,0.6784493874919406,0.00597350391704598,0.56010101010101
-"2  + radiation, ethnicity, node-assessment (informative missingness)",15,Their blanks track the outcome (56 % vs 12 % for radiation),0.7550970699906869,0.007897899562886258,0.513888888888889
-3  + tumour status & new-tumour event at follow-up (post-baseline),17,Outcome proxies recorded after diagnosis,0.8592664230962104,0.004664660691377119,0.30252525252525253
-4  + days to last follow-up,18,Blank for every patient who died,0.9137053155670177,0.005093739329282908,0.0797979797979798

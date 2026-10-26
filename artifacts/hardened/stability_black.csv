@@ -1,0 +1,15 @@
+,mean_rank,rank_sd,top3_freq,rank_lo,rank_hi,mean_rank_all,top3_freq_all,label
+age,1.19,0.4191140246479061,1.0,1.0,2.0,1.14,1.0,Age at diagnosis
+n_stage_h,3.5,2.3419753382238,0.63,1.0,10.049999999999983,3.9,0.54,"Nodal status (N, NX=N0)"
+m_stage_h,3.61,1.1091447246423798,0.5,2.0,6.0,4.56,0.2,"Distant metastasis (M, MX=M0)"
+t_stage,4.42,2.080112662061526,0.42,2.0,9.0,4.79,0.29,Tumour size (T)
+sub_luma,5.37,3.1992896938937156,0.37,2.0,12.0,5.53,0.28,PAM50: Luminal A
+race_asian,5.9,1.0777829844714388,0.0,4.0,8.0,3.35,0.65,Race: Asian
+sub_basal,8.67,2.617173276570728,0.02,4.0,13.0,9.34,0.01,PAM50: Basal-like
+race_black,9.03,2.1246746631525553,0.01,4.0,13.0,9.15,0.0,Race: Black
+sub_lumb,9.39,2.9090419819117863,0.01,4.0,14.0,9.65,0.01,PAM50: Luminal B
+sub_her2,9.97,3.0032137668326127,0.01,4.0,14.0,9.97,0.0,PAM50: HER2-enriched
+histology_lobular,10.5,2.5839442092985823,0.01,5.0,14.0,9.86,0.0,Histology: lobular
+sub_normal,10.565,2.8627307370284183,0.02,4.475,14.0,11.025,0.02,PAM50: Normal-like
+histology_other,11.09,2.4291786864924307,0.0,6.0,14.0,10.83,0.0,Histology: other
+prior_dx,11.795,2.32258889860414,0.0,6.0,14.0,11.905,0.0,Prior diagnosis

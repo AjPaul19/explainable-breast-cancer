@@ -1,0 +1,15 @@
+,White,Black,ratio_B_over_W,rank_White,rank_Black,label
+age,0.29236633,0.2795166,0.95604926,1,1,Age at diagnosis
+n_stage_h,0.17161696,0.183679,1.0702847,2,2,"Nodal status (N, NX=N0)"
+sub_luma,0.14525749,0.1451459,0.99923176,3,3,PAM50: Luminal A
+m_stage_h,0.12257609,0.14395326,1.1743993,4,4,"Distant metastasis (M, MX=M0)"
+t_stage,0.100103505,0.105241165,1.0513235,5,5,Tumour size (T)
+race_asian,0.07892137,0.081562586,1.0334665,6,6,Race: Asian
+sub_lumb,0.022908257,0.02268824,0.9903957,7,7,PAM50: Luminal B
+sub_basal,0.016881337,0.021070048,1.2481267,8,8,PAM50: Basal-like
+sub_her2,0.016676506,0.018423298,1.1047457,9,9,PAM50: HER2-enriched
+histology_lobular,0.010773899,0.004988125,0.46298236,10,13,Histology: lobular
+sub_normal,0.009637564,0.010993371,1.1406794,11,11,PAM50: Normal-like
+histology_other,0.007825713,0.0060834675,0.77736914,12,12,Histology: other
+race_black,0.0054316334,0.014214782,2.6170363,13,10,Race: Black
+prior_dx,0.0036442194,0.0041953567,1.151236,14,14,Prior diagnosis

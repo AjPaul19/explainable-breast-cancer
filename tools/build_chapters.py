@@ -1,8 +1,8 @@
 """Build Chapters_3_4_5.docx (Methodology, Implementation and Results, Conclusions) from the artifacts.
 
-Every number in the text is read from ``artifacts/`` so the thesis cannot drift from the code.  The
-``check`` calls at the top assert the qualitative claims the prose makes; if a re-run changes the
-picture, the build stops instead of printing a stale conclusion.
+Follows the structure of the revised proposal (Chapter 3 sections 3.2.1-3.2.11).  Every number is read from
+``artifacts/``; the ``check`` calls assert the qualitative claims the prose relies on, so a re-run that changes the
+picture stops the build instead of printing a stale conclusion.  Figure / table references are generated, not typed.
 """
 import pandas as pd
 from docx import Document
@@ -13,43 +13,63 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 import common as C
-from common import FL, META, auc_g, ci, cv, ho, paired, pct, sens, sens_n
+from common import KEYS, SHORT, pct
 
-P = META["params"]
-ROOT, FIG = C.ROOT, C.FIG
-OUT = ROOT / "Chapters_3_4_5.docx"
-KEYS = ["aware", "blind", "reweigh", "gthr", "reweigh_gthr"]
+P, H = C.load()
+FL, META = P.FL, P.meta
+OUT = C.ROOT / "Chapters_3_4_5.docx"
+EQ = META["explain_quality"]
+SURV = META["survival"]
+MAINM = "XGBoost (race-aware, primary)"
 
-# ------------------------------------------------------------------ claims the prose relies on
+
 def check(cond, msg):
     if not cond:
         raise SystemExit(f"CLAIM NO LONGER HOLDS - rewrite the text: {msg}")
 
-g_e, g_lo, g_hi = cv("aware", "tpr_gap")
-f_e, f_lo, f_hi = cv("aware", "fpr_gap")
-check(g_lo < 0 < g_hi and abs(g_e) < 0.03, "baseline recall gap small with CI spanning 0")
-check(f_e > 0.02, "baseline false-alarm gap positive")
-check(all(cv(k, "fpr_gap")[0] > 0 for k in KEYS), "false-alarm gap positive for every strategy")
-check(paired("reweigh", "fpr_gap")[2] < 0.005, "reweighing reduces false-alarm gap (CI upper bound below ~0)")
-check(paired("gthr", "tpr_gap")[0] > 0 or paired("gthr", "abs_tpr_gap")[0] >= 0, "group thresholds do not shrink the recall gap")
-check(C.IMPM.loc["race_black", "aware"] < 0.005, "model ignores the race flag")
-check(sens(36, "aware", "fpr_gap")[0] > f_e, "false-alarm gap widens on settled outcomes")
-check(C.IMP.index[0] == "age" and C.IMP.index[1] == "n_stage", "age then N stage lead the importance ranking")
-check(C.DIRN.agrees.dropna().all(), "SHAP direction agrees with clinical prior")
 
+# ------------------------------------------------------------------ numbers used repeatedly
+abl = P.ablation.set_index("variant")
+ABL0, ABL_RT = abl.iloc[0].auc, abl.iloc[1].auc
+lad = P.ladder
+miss = P.miss.set_index("column")
+rad, racem = miss.loc["RADIATION_THERAPY"], miss.loc["RACE"]
+nxr = miss.loc["PATH_N_STAGE = NX"]; mxr = miss.loc["PATH_M_STAGE = MX"]
+t1 = P.table1.set_index("characteristic")
+rs = P.race_shap.set_index("patients")
+unk = rs.loc["race NOT recorded"]
+te = P.test_metrics
+g_tpr, g_fpr = P.cv("aware", "tpr_gap"), P.cv("aware", "fpr_gap")
+eods = {k: P.cv(k, "eod")[0] for k in KEYS}
+
+check(P.align.feature.iloc[0] == "Radiation therapy", "radiation is the top SHAP feature of the as-proposed model")
+check(ABL0 - ABL_RT > 0.04, "removing radiation lowers AUC by > 0.04")
+check(g_tpr[1] < 0 < g_tpr[2], "baseline recall gap CI spans 0")
+HW = (g_tpr[2] - g_tpr[1]) / 2          # half-width of the recall-gap CI
+ms = P.msens
+check(ms is not None and (ms[(ms.strategy == "blind") & (ms.metric == "tpr_gap")].estimate < 0).all(), "race-blind lowers the recall gap in every near-equivalent configuration")
+check((ms[(ms.strategy == "gthr") & (ms.metric == "tpr_gap")].estimate.abs() < 0.03).all(), "group thresholds keep the recall gap within 3 points in every configuration")
+for m_ in (24, 36, 60):
+    check(P.sens_(m_, "aware", "fpr_gap")[1] < 0 < P.sens_(m_, "aware", "fpr_gap")[2], f"settled-outcome false-alarm gap CI spans 0 ({m_} mo)")
+check(abs(META["risk_gap_total"]) < 0.02, "opposing terms cancel in the mean score gap")
+check(g_fpr[1] < 0 < g_fpr[2], "baseline false-alarm gap CI spans 0")
+check(P.paired_("reweigh", "tpr_gap")[2] < 0, "reweighing lowers Black recall relative to the baseline (paired CI below 0)")
+check(min(eods, key=eods.get) in ("gthr", "reweigh_gthr"), "a group-threshold strategy has the smallest equalised-odds difference")
+check(unk.share_of_total_attribution > 0.25, "race-not-recorded carries > 25 % of attribution")
+check(P.direction.agrees.dropna().all(), "SHAP direction agrees with the clinical prior")
+check(H.ov("aware", "auc_roc")[0] < P.ov("aware", "auc_roc")[0] - 0.03, "hardened AUC clearly below as-proposed AUC")
+check(P.tm(MAINM, "recall")[2] >= 0.80, "the 80 % target lies inside the hold-out recall interval")
+
+# ------------------------------------------------------------------ document plumbing
 doc = Document()
 st = doc.styles
-st["Normal"].font.name = "Times New Roman"
-st["Normal"].font.size = Pt(12)
+st["Normal"].font.name = "Times New Roman"; st["Normal"].font.size = Pt(12)
 st["Normal"]._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
 for name, size in [("Heading 1", 16), ("Heading 2", 13), ("Heading 3", 12)]:
     st[name].font.name = "Times New Roman"; st[name].font.size = Pt(size); st[name].font.bold = True
-    st[name].font.color.rgb = RGBColor(0, 0, 0)
-    st[name]._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
+    st[name].font.color.rgb = RGBColor(0, 0, 0); st[name]._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
 sec = doc.sections[0]
 sec.left_margin = sec.right_margin = Inches(1); sec.top_margin = sec.bottom_margin = Inches(1)
-
-# page number footer
 fp = sec.footer.paragraphs[0]; fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 run = fp.add_run()
 for tag, txt in [("begin", None), (None, "PAGE"), ("end", None)]:
@@ -59,8 +79,28 @@ for tag, txt in [("begin", None), (None, "PAGE"), ("end", None)]:
         el = OxmlElement("w:instrText"); el.set(qn("xml:space"), "preserve"); el.text = txt
     run._r.append(el)
 
-fig_n = {"3": 0, "4": 0}
-tab_n = {"3": 0, "4": 0}
+# ordered registries -> generated references ("Figure 4.7")
+FIGS = {"3": ["workflow", "framework"],
+        "4": ["survival", "leakage", "ablation", "benchmark", "curve", "forest", "pr", "beeswarm", "dependence", "wf_tp", "wf_fn", "wf_tn",
+              "deletion", "racemiss", "rates", "gaps", "tradeoff", "sweep", "roc", "calib", "sensitivity", "holdout_race", "imp_race",
+              "gapdecomp", "profile", "stability", "mitig", "h_rates", "h_beeswarm"]}
+TABS = {"3": ["objectives", "variables", "strategies", "software"],
+        "4": ["cohort", "missing", "ladder", "specs", "bench", "test", "rules", "explq", "fair", "paired", "msens", "calib", "holdrace", "compare"]}
+fig_n, tab_n = {"3": 0, "4": 0}, {"3": 0, "4": 0}
+
+
+def fr(key):
+    for ch, lst in FIGS.items():
+        if key in lst:
+            return f"Figure {ch}.{lst.index(key) + 1}"
+    raise KeyError(key)
+
+
+def tr(key):
+    for ch, lst in TABS.items():
+        if key in lst:
+            return f"Table {ch}.{lst.index(key) + 1}"
+    raise KeyError(key)
 
 
 def H1(t): doc.add_heading(t, 1)
@@ -68,12 +108,12 @@ def H2(t): doc.add_heading(t, 2)
 def H3(t): doc.add_heading(t, 3)
 
 
-def para(t, bold=False, italic=False, align=None, size=None):
+def para(t, bold=False, italic=False, size=None):
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(6); p.paragraph_format.line_spacing = 1.15
     r = p.add_run(t); r.bold = bold; r.italic = italic
     if size: r.font.size = Pt(size)
-    if align == "j": p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     return p
 
 
@@ -86,21 +126,21 @@ def bullets(items):
             p.add_run(t)
 
 
-def caption(kind, ch, text):
-    n = (fig_n if kind == "Figure" else tab_n)
-    n[ch] += 1
-    p = doc.add_paragraph(); r = p.add_run(f"{kind} {ch}.{n[ch]}: {text}"); r.bold = True; r.font.size = Pt(10.5)
+def caption(kind, ch, key, text):
+    reg, cnt = (FIGS, fig_n) if kind == "Figure" else (TABS, tab_n)
+    cnt[ch] += 1
+    assert reg[ch][cnt[ch] - 1] == key, f"{kind} order mismatch: expected {reg[ch][cnt[ch] - 1]}, got {key}"
+    p = doc.add_paragraph(); r = p.add_run(f"{kind} {ch}.{cnt[ch]}: {text}"); r.bold = True; r.font.size = Pt(10.5)
     p.paragraph_format.space_after = Pt(8)
     return p
 
 
-def figure(ch, fname, text, width=6.2):
-    f = FIG / fname
-    if not f.exists():
-        return
+def figure(ch, key, fname, text, width=6.2, spec=P):
+    f = spec.fig / fname
+    assert f.exists(), f
     doc.add_picture(str(f), width=Inches(width))
     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    caption("Figure", ch, text).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    caption("Figure", ch, key, text).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
 
 def shade(cell, color):
@@ -108,12 +148,11 @@ def shade(cell, color):
     sh.set(qn("w:val"), "clear"); sh.set(qn("w:color"), "auto"); sh.set(qn("w:fill"), color); tcPr.append(sh)
 
 
-def table(ch, text, df, widths=None, size=9):
-    caption("Table", ch, text)
+def table(ch, key, text, df, widths=None, size=9):
+    caption("Table", ch, key, text)
     t = doc.add_table(rows=1, cols=len(df.columns)); t.style = "Table Grid"; t.alignment = WD_TABLE_ALIGNMENT.CENTER
     for i, c in enumerate(df.columns):
-        cell = t.rows[0].cells[i]; cell.text = ""; r = cell.paragraphs[0].add_run(str(c)); r.bold = True; r.font.size = Pt(size)
-        shade(cell, "E8ECF1")
+        cell = t.rows[0].cells[i]; cell.text = ""; r = cell.paragraphs[0].add_run(str(c)); r.bold = True; r.font.size = Pt(size); shade(cell, "E8ECF1")
     for _, row in df.iterrows():
         cells = t.add_row().cells
         for i, v in enumerate(row):
@@ -125,158 +164,123 @@ def table(ch, text, df, widths=None, size=9):
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
 
-def f3(x): return f"{x:.3f}"
+def ci3(est, lo, hi, d=2):
+    return f"{est:.{d}f} ({lo:.{d}f}-{hi:.{d}f})"
 
 
 # =============================================================================================
-doc.add_paragraph()
+# COVER NOTE
+# =============================================================================================
 tp = doc.add_paragraph(); tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = tp.add_run("UTILIZING SHAP TO EXPLAIN XGBOOST FOR RECALL-FIRST PREDICTION OF DEATH DURING FOLLOW-UP IN BREAST CANCER, WITH A RACIAL-FAIRNESS AUDIT"); r.bold = True; r.font.size = Pt(15)
-para("Chapters 3, 4 and 5: Methodology, Implementation and Results, Conclusions", bold=True, align=None).alignment = WD_ALIGN_PARAGRAPH.CENTER
-para("Department of Computer Science, University of Jos, Plateau State, Nigeria", italic=True).alignment = WD_ALIGN_PARAGRAPH.CENTER
-para("Supervisors: Dr. G. Nentawe and Prof. A. C. Deme", italic=True).alignment = WD_ALIGN_PARAGRAPH.CENTER
-para("Note on scope. This revision of the implementation phase changes the prediction target of the original proposal from "
-     "\"benign versus malignant\" (not available in TCGA-BRCA, which contains only malignant cases) to \"death during follow-up\", keeps the "
-     "recall-first design, and extends the work with a bias-mitigation study comparing Black and White patients.", italic=True, size=10.5)
+r = tp.add_run("UTILIZING SHAP TO EXPLAIN AN XGBOOST MODEL THAT PREDICTS DEATH DURING FOLLOW-UP IN BREAST CANCER"); r.bold = True; r.font.size = Pt(15)
+para("Chapters 3, 4 and 5: Methodology, Implementation and Results, Conclusions", bold=True).alignment = WD_ALIGN_PARAGRAPH.CENTER
+para("Department of Computer Science, University of Jos, Plateau State, Nigeria. Supervisors: Dr. G. Nentawe and Prof. A. C. Deme", italic=True).alignment = WD_ALIGN_PARAGRAPH.CENTER
+para("These chapters implement the revised proposal (prognostic target; Section 3.2 of the revised proposal). They add one extension that is not among its five objectives, "
+     "a Black-versus-White fairness audit with bias mitigation, and they report the proposal's predictor list as specified next to an audit-hardened variant. In the thesis the proposal's "
+     "\"4.0 Conclusion\" becomes Chapter 5.", italic=True, size=10.5)
 doc.add_page_break()
 
 # =============================================================================================
 # CHAPTER 3
 # =============================================================================================
-H1("3.0 Research Methodology")
+H1("3.0 Methodology")
 H2("3.1 Introduction")
-para("This chapter describes how the study was carried out: the data and the rules that govern which of its columns may be used, the "
-     "construction of the XGBoost classifier with a recall-first decision rule, the explanation of that classifier with SHapley Additive "
-     "exPlanations (SHAP), and the audit and mitigation of racial bias between Black and White patients. The chapter follows the structure of "
-     "the proposal (Sections 3.2 to 3.5 there) and states explicitly where the implementation refines or departs from it and why.", align="j")
+para("This chapter describes how the five objectives of the study were achieved. The work has two phases. Phase 1 is a computational experiment (Objectives 1 to 3): an XGBoost classifier is developed, evaluated and "
+     "explained with SHapley Additive exPlanations (SHAP) on clinical data from The Cancer Genome Atlas (TCGA). Phase 2 is a physician user study (Objective 4); the instrument and analysis code are complete but no clinician has yet "
+     "responded. Both phases inform a conceptual framework (Objective 5). Because every patient has a diagnosed malignancy, the task is prognostic (mortality-risk prediction), not diagnostic. "
+     "One extension is added: an audit of racial fairness between Black and White patients, with a comparison of bias-mitigation strategies.")
 H2("3.2 Research design")
-para("The study is a retrospective, computational, supervised-learning study on public, de-identified clinical records from The Cancer Genome Atlas "
-     "breast invasive carcinoma cohort (TCGA-BRCA). Figure 3.1 summarises the workflow. Six stages are executed by a single, reproducible code base "
-     "(run_pipeline.py): (1) data audit and cleaning, (2) model development and validation, (3) recall-first thresholding, (4) fairness audit and "
-     "mitigation, (5) SHAP explanation and (6) delivery through an interactive dashboard.", align="j")
-figure("3", "00_workflow.png", "Workflow of the study", 6.5)
-H3("3.2.1 Revision of the prediction target")
-para("The proposal framed the task as classifying samples as benign or malignant. TCGA-BRCA contains only histologically confirmed cancers, so there is no "
-     "benign class to learn. The clinically meaningful and data-supported binary outcome is whether the patient died during follow-up (overall-survival event). "
-     "The recall-first rationale of the proposal carries over unchanged: a missed death is a far more serious error than an unnecessary extra "
-     "review. The target is therefore:", align="j")
-bullets([("died = 1 ", "when OS_STATUS = \"1:DECEASED\" (death at any time during follow-up), otherwise 0 (living at last contact)."),
-         ("Interpretation. ", "Follow-up is right-censored, so a living patient with short follow-up may still die later. The label is thus \"death observed during follow-up\" and not \"death within N years\". Section 3.8.4 quantifies the consequences with a sensitivity analysis.")])
-H3("3.2.2 Objectives and where each is addressed")
-table("3", "Objectives of the proposal (Section 1.4) and the extension added in this phase", pd.DataFrame([
-    ["1. Conceptual framework for integrating SHAP into healthcare pipelines", "Section 3.2 (workflow), Section 3.11 (dashboard), Section 4.12"],
-    ["2. Evaluate diagnostic performance (accuracy, precision, recall, F1, AUC)", "Sections 3.6, 3.7, 3.10; Sections 4.6 and 4.7"],
-    ["3. Apply SHAP to identify and interpret influential clinical features", "Section 3.9; Sections 4.9 and 4.10"],
-    ["4. Evaluate perceived interpretability and trust among clinicians", "Section 3.12 (protocol designed, study not yet run); Section 5.4"],
-    ["5. (Added) Audit racial bias between Black and White patients and test mitigation", "Section 3.8; Sections 4.8 and 4.9"]],
-    columns=["Objective", "Where addressed"]), widths=[3.6, 2.9], size=9.5)
-H2("3.3 Data collection")
-para(f"The data are the TCGA PanCancer Atlas clinical patient table for breast cancer distributed by cBioPortal (Cerami et al., 2012; Liu et al., 2018): "
-     f"{FL['n_records']:,} patients and 38 columns, accompanied by a data dictionary. The outcome fields follow the curated TCGA Clinical Data Resource "
-     f"(Liu et al., 2018). Self-reported race (RACE) is used to define the fairness groups; genetic-ancestry calls (Carrot-Zhang et al., 2020) are used only for a "
-     f"sensitivity analysis. Molecular subtype is the PAM50 intrinsic subtype (Parker et al., 2009).", align="j")
-para(f"Cohort construction (Table 3.2). Of the {FL['n_records']:,} records, {FL['n_missing_race']} lack a race entry and {FL['n_other_race']} are Asian or American Indian; "
-     f"these are excluded because the objective is a Black versus White comparison and the remaining groups are too small to analyse separately. The study "
-     f"cohort comprises {FL['n_cohort']} patients ({FL['n_white']} White, {FL['n_black']} Black) with {FL['deaths']} deaths ({FL['deaths_white']} White, {FL['deaths_black']} Black).", align="j")
-table("3", "Cohort flow", pd.DataFrame([
-    ["Records in cBioPortal file", FL["n_records"]], ["Race not recorded", f"-{FL['n_missing_race']}"], ["Asian / American Indian", f"-{FL['n_other_race']}"],
-    ["Study cohort", f"{FL['n_cohort']} ({FL['n_white']} White / {FL['n_black']} Black)"], ["Deaths during follow-up", f"{FL['deaths']} ({FL['deaths_white']} / {FL['deaths_black']})"],
-    ["Development set (80 %)", f"{FL['n_dev']} patients, {FL['dev_deaths']} deaths"],
-    ["Hold-out test set (20 %)", f"{FL['n_test']} patients, {FL['test_deaths']} deaths ({FL['test_black']} Black patients, {FL['test_black_deaths']} Black deaths)"]],
-    columns=["Step", "n"]), widths=[3.2, 3.3])
-H2("3.4 Data governance and preprocessing")
-para("The proposal specified null handling, standard scaling, encoding and normalisation. For a tree-based model, scaling is unnecessary because splits depend only "
-     "on the order of values, so it was omitted; instead the effort went into the step that matters most for clinical validity: deciding which columns may enter the "
-     "model at all. Every one of the 38 source columns was assigned one of four decisions (Table 4.2 summarises the evidence).", align="j")
-H3("3.4.1 Outcome leakage")
-para("Columns that record what happened after diagnosis, or that are the outcome in another form, were excluded: follow-up duration (OS_MONTHS, DAYS_LAST_FOLLOWUP), "
-     "disease-specific, disease-free and progression-free endpoints and their durations, tumour status at last follow-up and the post-treatment new-tumour indicator. "
-     "Leakage of this kind is a well-documented source of over-optimistic results (Kaufman et al., 2011) and is exactly the type of \"data leak\" the proposal "
-     "(Section 1.1) hoped SHAP would help detect.", align="j")
-H3("3.4.2 Informative missingness")
-para("A blank can predict the outcome when it reflects registry practice rather than biology. Radiation therapy is blank for 56 % of patients who died versus 12 % of the rest; ethnicity "
-     "for 4 % versus 16 %. These fields, and the primary-lymph-node assessment and AJCC edition fields, were excluded. Pathologic categories \"not assessed\" were set to the AJCC default "
-     "(MX to M0, NX to N0), because left as missing they let the model learn that \"NX\" (61 % death rate, n = 18) means danger.", align="j")
-H3("3.4.3 Features retained and encoding")
-table("3", "Model inputs", pd.DataFrame([
-    ["age", "Age at diagnosis (years)", "numeric"], ["t_stage", "Pathologic T, 1-4 (T1A/B/C to 1; TX missing)", "ordinal, monotone increasing"],
-    ["n_stage", "Pathologic N, 0-3 (N1MI, N1A to 1; N0(I+) to 0; NX to 0)", "ordinal, monotone increasing"],
-    ["m_stage", "M1 = 1 (M0, cM0(I+), MX = 0)", "binary, monotone increasing"],
-    ["sub_luma / lumb / her2 / basal / normal", "PAM50 subtype; all five are missing when the subtype was not called", "one-hot with native missing"],
-    ["histology_lobular, histology_other", "ICD-O-3 8520/3 lobular; others except 8500/3 ductal", "one-hot"],
-    ["prior_dx", "Prior malignancy", "binary"],
-    ["race_black", "Black or African American (reference White); baseline model only", "binary"]],
-    columns=["Feature", "Definition", "Type"]), widths=[1.7, 3.5, 1.3])
-H2("3.5 Data partitioning and validation")
-para(f"All partitions are stratified by race x outcome so that every split retains Black patients and deaths among them. A single hold-out test set (20 %, {FL['n_test']} patients) is set "
-     f"aside once and used only for the final confirmation; the proposal's validation set is realised as the held-out folds of 5-fold cross-validation inside the development set "
-     f"(746 patients), which serve hyper-parameter tuning, threshold learning and implicit early stopping (the number of trees is tuned). Because the hold-out set contains only "
-     f"{FL['test_black_deaths']} Black deaths, it cannot support any statement about fairness. The principal evaluation is therefore 5 x 5-fold repeated cross-validation over the "
-     f"whole cohort, in which every patient is predicted by models that never saw them and every threshold is learned only from the training portion of each fold (nested thresholding).", align="j")
-H2("3.6 Model development")
-H3("3.6.1 Algorithm")
-para("The classifier is XGBoost (Chen and Guestrin, 2016), chosen in the proposal for its efficiency and accuracy on tabular data. Because clinicians expect larger tumours, more involved nodes and "
-     "metastasis never to lower risk, monotone non-decreasing constraints were imposed on T, N and M stage. This is a design decision made before looking at results. The ablation in Table 4.3 "
-     "shows it costs no discrimination.", align="j")
-H3("3.6.2 Hyper-parameter search")
-para("Sixty random configurations plus the default were scored by 4 x 5-fold stratified cross-validation on the development set. The objective is aligned with the recall-first design: "
-     "the lowest false-positive rate at 80 % recall (ties broken by AUC). The search space (maximum depth 1-3, learning rate 0.01-0.2, 60-400 trees, minimum child weight 0.1-2, subsampling, "
-     "L1/L2 penalties and gamma) deliberately keeps leaves small enough to isolate rare, decisive groups such as M1 disease (17 patients, 88 % mortality).", align="j")
-H3("3.6.3 Benchmark models")
-para("Logistic regression (median imputation, standardisation) and a random forest were trained on the same features to test whether the complexity of gradient boosting is justified.", align="j")
-H2("3.7 Recall-first decision rule")
-para(f"The default probability threshold of 0.5 is inappropriate for an outcome with a prevalence of about 15 %: it would flag almost no one. The operating point is instead derived from the "
-     f"training data: the threshold is the largest score that still captures a target share of deaths (target recall 80 %) in out-of-fold training predictions (2 x 5-fold). The rule is "
-     f"implemented once, in recall_threshold(), and is re-learned inside every cross-validation fold so that no threshold ever sees test data. A target sweep from 70 % to 95 % (Section 4.8.4) tests "
-     f"whether conclusions depend on the chosen 80 %.", align="j")
-H2("3.8 Fairness audit and mitigation")
-H3("3.8.1 Fairness criteria")
-para("White patients are the reference group and Black patients the focus group. Because the clinical cost is asymmetric, the primary criterion is equal opportunity (Hardt et al., 2016): the share "
-     "of patients who die that the model flags (recall, or true-positive rate) should not depend on race. Secondary criteria are the false-alarm rate (share of survivors flagged), the equalised-odds "
-     "difference (the larger of the absolute recall and false-alarm gaps), the discrimination within each group (AUC) and calibration within each group (observed-to-expected ratio and calibration "
-     "slope). Gaps are always Black minus White.", align="j")
-H3("3.8.2 Mitigation strategies")
-table("3", "Strategies compared (all use the same XGBoost settings)", pd.DataFrame([
-    [C.SHORT[k], C.META["strategies"][k]["family"], C.META["strategies"][k]["note"]] for k in KEYS], columns=["Strategy", "Family", "Description"]),
-    widths=[1.9, 1.2, 3.4])
-para("Reweighing (Kamiran and Calders, 2012) assigns each training row the weight P(race) P(outcome) / P(race, outcome), making race and outcome statistically independent in the weighted data. "
-     "Group thresholds apply the recall rule separately within each race, which is the post-processing route to equal opportunity.", align="j")
-H3("3.8.3 Uncertainty")
-para("With 30 Black deaths a recall estimate has a margin of about 15 percentage points. All reported rates therefore carry 95 % percentile bootstrap intervals (1,000 resamples, stratified by group). "
-     "Differences between strategies are assessed with a paired bootstrap in which every strategy is evaluated on the same resamples (Efron and Tibshirani, 1993), which gives a far tighter "
-     "interval for \"did the mitigation change the gap?\" than comparing two overlapping intervals. Wilson intervals (Wilson, 1927) are used for the single hold-out split.", align="j")
-H3("3.8.4 Sensitivity analyses")
-bullets([("Settled outcomes. ", "Evaluation is restricted to patients who died or were followed for at least 24, 36 or 60 months, removing most censoring noise from the survivors."),
-         ("Group definition. ", "Self-reported race is replaced by genetic ancestry (African / African-admixed versus European)."),
-         ("Recall target. ", "The target is varied from 70 % to 95 %.")])
-H2("3.9 Explainability with SHAP")
-para("Tree SHAP (Lundberg and Lee, 2017; Lundberg et al., 2020) decomposes each prediction, in log-odds, into additive feature contributions that sum exactly to the model output minus the "
-     "base value. The following analyses are produced from the deployment models: (i) global importance and beeswarm plots, (ii) dependence plots, (iii) local waterfall plots for a true positive, "
-     "a missed death and a true negative, (iv) a check that the direction of each effect matches clinical knowledge, (v) importance computed separately for White and Black patients, "
-     "(vi) an exact additive decomposition of the Black-minus-White gap in average predicted risk, (vii) the SHAP profile of missed versus caught deaths in each group, (viii) agreement of explanations "
-     "before and after mitigation, and (ix) a 100-resample bootstrap of the importance ranking among Black patients to quantify how far the ranking can be trusted.", align="j")
-H2("3.10 Evaluation metrics")
-para("Recall (sensitivity), specificity, false-positive rate, precision, F1-score, accuracy and the fraction of patients flagged at the operating point; the area under the ROC curve (AUC) as a "
-     "threshold-free measure; the false-positive rate at 80 % recall as the primary single-number cost of the recall-first design; and the Brier score and calibration slope for risk estimates.", align="j")
-H2("3.11 Dashboard design")
-para("A Streamlit application (app.py) delivers the model to clinicians and reviewers. It has eight tabs: an overview, a patient explainer with what-if inputs and a SHAP waterfall, a fairness lab "
-     "comparing the five strategies with intervals, a threshold explorer showing recall and false-alarm rates by race as the threshold moves, global SHAP views including the risk-gap decomposition and "
-     "stability, a data-audit view, a cohort explorer and the model card. The dashboard reads only the files written by the pipeline, so it can never disagree with the thesis.", align="j")
-H2("3.12 Physician user study (Objective 4)")
-para("Objective 4 requires clinicians to judge the interpretability and trustworthiness of the SHAP output. This phase delivers the instrument but not the data: no clinician study has been run. The planned "
-     "protocol is a within-subject comparison of oncologists and clinical researchers shown (a) the risk score alone and (b) the score with the SHAP waterfall for 12 cases (balanced by race and outcome), "
-     "measuring a 5-point Likert trust and understanding scale, the System Usability Scale for the dashboard, and the proportion of time the clinician's decision agrees with the model. Ethical approval and informed "
-     "consent would be obtained before any recruitment.", align="j")
-H2("3.13 Ethical considerations")
-para("The data are public and de-identified; no attempt is made to re-identify patients. Race is used strictly as an audit variable and as a (tested and rejected) model input; the study does not "
-     "claim that race has a biological effect. Strategies that use race at prediction time (race-aware input, group thresholds) are flagged in the dashboard because their use may be legally or ethically "
-     "unacceptable in a given setting. The model is a research prototype and carries an explicit non-clinical-use notice. The work follows the data-minimisation and transparency principles named in the proposal "
-     "(Nigeria Data Protection Act, 2023; GDPR; HIPAA).", align="j")
-H2("3.14 Software and reproducibility")
+para(f"The design is mixed-methods and two-phase. In Phase 1 the TCGA-BRCA clinical patient table is audited, cleaned and split 80/20 into development and hold-out sets; XGBoost is tuned and trained to predict overall-survival status; "
+     f"its performance is compared with baseline models; and SHAP explains its predictions ({fr('workflow')}, {tr('objectives')}). Throughout, the recall metric is prioritised: a missed death is a more costly error than an unnecessary review.")
+figure("3", "workflow", "00_workflow.png", "Workflow of the study", 6.5)
+table("3", "objectives", "Objectives, methods and outputs", pd.DataFrame([
+    ["1. Develop the model", "Stratified 80/20 split; repeated stratified 5-fold CV; Bayesian hyper-parameter search; class weighting; recall-first decision threshold", "Tuned XGBoost model (Sections 3.2.4, 4.5)"],
+    ["2. Evaluate performance", "Accuracy, precision, recall, F1, AUC-ROC, PR-AUC, confusion matrix with bootstrap CIs; baselines", "Performance results (Sections 3.2.5, 4.6)"],
+    ["3. Apply and assess SHAP", "TreeSHAP; global and local plots; fidelity, stability, clinical alignment, race check", "Interpretation of key prognostic features (Sections 3.2.6, 4.7)"],
+    ["4. User study", "Within-subject questionnaire, condition A (score) vs B (score + SHAP)", "Kit and analysis code (Section 3.2.8); data not yet collected"],
+    ["5. Conceptual framework", "Synthesis of Objectives 1-4", "Framework and discussion (Sections 3.2.9, 4.11)"],
+    ["Extension: fairness", "5 mitigation strategies x repeated CV, paired bootstrap, sensitivity analyses", "Bias audit (Sections 3.2.7, 4.8)"]],
+    columns=["Objective", "Method", "Output"]), widths=[1.5, 3.3, 1.7])
+
+H3("3.2.1 Data collection")
+para(f"The data are the TCGA PanCancer Atlas clinical patient table for breast cancer distributed by cBioPortal (Cerami et al., 2012; Liu et al., 2018): {FL['n_records']:,} patients and 38 variables, with a data dictionary. "
+     f"All patients have a malignant tumour (ICD-O-3 morphology codes ending in /3). The target is overall-survival status (OS_STATUS): {FL['n_deaths']} patients ({pct(FL['prevalence'])}) are deceased and {FL['n_records'] - FL['n_deaths']} living at last contact. "
+     f"The data are public and de-identified. Self-reported race gives the fairness groups: {FL['n_white']} White ({FL['deaths_white']} deaths) and {FL['n_black']} Black ({FL['deaths_black']} deaths); "
+     f"{FL['n_asian']} Asian and {FL['n_unknown_race']} patients without recorded race are used for training but not audited.")
+H3("3.2.2 Variable selection and leakage control")
+para("Only variables available at or near diagnosis and primary treatment are predictors; variables recorded during follow-up or derived from the outcome are excluded (Kaufman et al., 2011). "
+     f"{tr('variables')} reproduces the decisions of the revised proposal and adds the audit result for each.")
+table("3", "variables", "Variable selection decisions (revised proposal, Table 3.2) with audit notes", pd.DataFrame([
+    ["Included", "Diagnosis age; PAM50 subtype; AJCC pathologic T, N, M; histology (ductal / lobular / other); race; radiation therapy; neoadjuvant therapy; prior diagnosis",
+     "Radiation therapy: blanks carry the outcome. NX / MX codes and race-not-recorded likewise (Section 4.4)"],
+    ["Excluded: outcome-related", "OS months; DSS, DFS, PFS status and months; person neoplasm cancer status; new tumour event; days to last follow-up", "Leakage; reproduced in the leakage ladder"],
+    ["Excluded: redundant or sparse", "Composite AJCC stage (used in a sensitivity model); days to birth; genetic ancestry (used in a sensitivity analysis); ethnicity (169 missing)", "Ethnicity blanks track the outcome too"],
+    ["Excluded: uninformative", "Identifiers, cancer type, ICD-10, ICD-O-3 site, consent flag, form date, AJCC edition, pathway flag, weight (100 % missing), sex (98.9 % female)", "-"]],
+    columns=["Category", "Variables", "Audit note"]), widths=[1.3, 3.5, 1.7])
+para("The primary model uses T, N and M and omits the composite stage so that SHAP does not split credit between correlated variables; a sensitivity model uses stage group instead (Section 4.4).")
+H3("3.2.3 Data preprocessing")
+para("Technical codes (TX, NX, MX, STAGE X) and blanks are set to missing, and AJCC labels are harmonised (IIA to II, N1A to 1, T1C to 1, cM0(I+) to 0). XGBoost handles missing values natively, so no imputation is applied. "
+     f"Subtype is missing for {int(miss.loc['SUBTYPE', 'n_missing'])} patients ({miss.loc['SUBTYPE', 'pct_missing']:.1f}%); a complete-case sensitivity analysis checks the effect. Ordinal variables are ordinally encoded, nominal variables one-hot encoded; "
+     "feature scaling is not needed for trees and is applied only inside the logistic-regression baseline. All preprocessing is fitted on training data only. An audit-hardened specification additionally drops radiation and neoadjuvant therapy "
+     "and sets NX and MX to N0 and M0 (the AJCC default); it exists to quantify the documentation artefacts discussed in Section 4.4.")
+H3("3.2.4 Model development")
+bullets([("Data split. ", f"Stratified 80/20 by race group x outcome: {FL['n_dev']} development and {FL['n_test']} hold-out patients (the hold-out set holds {FL['test_deaths']} deaths, of which {FL['test_black_deaths']} in Black patients); performance is therefore reported with bootstrap 95 % confidence intervals (1,000 resamples)."),
+         ("Class imbalance. ", f"With {pct(FL['prevalence'])} of patients deceased, class weighting (scale_pos_weight = negatives / positives = {FL['spw']:.1f} in the development set) is used, not synthetic oversampling. Consequently raw scores are not probabilities; Section 4.8.5 recalibrates them."),
+         ("Hyper-parameter tuning. ", f"Bayesian search (tree-structured Parzen estimator; Optuna), 60 trials, over learning rate, depth (1-3), number of trees, minimum child weight, subsampling and L1 / L2 regularisation, scored by repeated stratified 5-fold cross-validation (4 repeats) on the development set. The objective is aligned with the recall-first design: the lowest false-positive rate at 80 % recall."),
+         ("Overfitting control. ", "Regularisation, a small search space, the number of trees chosen inside cross-validation (cross-validated early stopping), and a comparison of training, cross-validated and hold-out AUC along the boosting path."),
+         ("Monotone constraints. ", "Larger T, N, M or stage group can never lower predicted risk, a clinical prior fixed before looking at results."),
+         ("Decision threshold. ", f"Recall-first: the threshold is the highest score that still catches at least 80 % of deaths in out-of-fold training predictions (2 x 5-fold), and is therefore learned without any test data. The proposal's phrase \"acceptable precision\" is operationalised as a floor of 1.25 times the training prevalence ({FL['precision_floor']:.2f}); the chosen threshold must clear it. Alternative rules (maximum recall at the precision floor, F2, Youden, 0.5) are compared (Section 4.6)."),
+         ("Baselines. ", "Logistic regression, random forest and a stage-only logistic model, tuned by the same repeated 5-fold CV, with thresholds from the same recall-first rule. Seeds are fixed (42).")])
+H3("3.2.5 Performance evaluation")
+para(f"The final model is evaluated once on the hold-out set with accuracy, precision, recall, F1-score, AUC-ROC and PR-AUC, a confusion matrix, and bootstrap confidence intervals. Because {pct(1 - FL['prevalence'], 0)} of patients are living, "
+     f"a model that always predicts \"living\" has about {pct(1 - FL['test_deaths'] / FL['n_test'], 0)} accuracy on the hold-out set, so accuracy is interpreted against that baseline and recall, PR-AUC (no-skill value equal to the prevalence) and balanced accuracy are emphasised. "
+     "Because a single hold-out set holds only 30 deaths, the headline operating characteristics are also estimated by 5 x 5-fold repeated cross-validation over all patients, in which every threshold is learned inside the training folds.")
+H3("3.2.6 Explainability integration")
+para("TreeSHAP (Lundberg et al., 2020) is applied to the final model. Global explanations use summary (beeswarm) and mean-absolute-SHAP plots; dependence plots show how feature values act; local explanations use waterfall plots for a true positive, a false negative and a true negative. The explanations are assessed as follows.")
+bullets([("Fidelity. ", "Base value plus the sum of SHAP values must reproduce the model margin for every patient (local accuracy). A deletion test supplements this guarantee with a faithfulness check: blanking each patient's k most-attributed features should lower AUC more than blanking k random features."),
+         ("Stability. ", "Spearman rank correlation of global importance across ten cross-validation fold models and across 100 bootstrap refits, and agreement with XGBoost's built-in gain, weight and cover importances."),
+         ("Clinical alignment. ", "Comparison of the top-ranked features with established prognostic factors (age, nodal status, tumour size, metastasis, molecular subtype), and a check that the direction of each staging effect matches clinical expectation."),
+         ("Fairness check. ", "The SHAP attribution carried by the race columns, separately for patients whose race is recorded and not recorded.")])
+H3("3.2.7 Fairness audit and bias mitigation (extension)")
+para("White patients are the reference group and Black patients the focus group. The primary criterion is equal opportunity (Hardt et al., 2016): among patients who die, the share flagged (recall) should not depend on race. "
+     "Secondary criteria are the false-alarm rate among survivors, the equalised-odds difference (the larger absolute gap), discrimination within each group (AUC) and calibration within each group after one shared recalibration. Gaps are Black minus White. "
+     f"Five strategies are compared ({tr('strategies')}); reweighing follows Kamiran and Calders (2012) and group thresholds are the post-processing route to equal opportunity.")
+table("3", "strategies", "Strategies compared (same XGBoost settings)", pd.DataFrame([[SHORT[k], META["strategies"][k]["family"], META["strategies"][k]["note"]] for k in KEYS],
+                                                                                    columns=["Strategy", "Family", "Description"]), widths=[1.9, 1.1, 3.5])
+para("Uncertainty. With 30 Black deaths a recall estimate carries a margin of about 15 percentage points. Rates therefore carry 95 % percentile bootstrap intervals (1,000 resamples stratified by group) over 5 x 5-fold cross-validated decisions, "
+     "and differences between strategies use a paired bootstrap on identical resamples (Efron and Tibshirani, 1993). Sensitivity analyses: the recall target (70-95 %); restricting evaluation to patients whose outcome is settled (died, or followed at least 24, 36 or 60 months); "
+     "defining groups by genetic ancestry (Carrot-Zhang et al., 2020) instead of self-reported race.")
+H3("3.2.8 Physician user study (Objective 4)")
+para("The design follows the revised proposal. Participants: 15 to 30 practising oncologists, pathologists, radiologists and breast surgeons recruited by purposive sampling (exploratory). Design: within-subject; each participant reviews 12 real, de-identified, typical cases "
+     "(six Black, six White; balanced by outcome and by model flag), six as condition A (predicted risk and recommendation only) and six as condition B (the same plus a SHAP waterfall), with assignment mirrored across consecutive participants and case order randomised. "
+     "Instrument: six 5-point Likert items (understandability, usefulness, confidence, trust, plausibility, intention to act) adapted from the explanation-satisfaction and trust scales of Hoffman et al. (2018), a follow-up decision, and open questions. "
+     "Analysis: participant-level means, Wilcoxon signed-rank tests for B versus A with Holm correction, rank-biserial effect sizes, bootstrap intervals, and thematic analysis of free text. With 20 participants the test detects only large effects (about r = 0.6 at 80 % power). "
+     "The kit (case cards, design table, questionnaire, response template and analysis script, tested on synthetic data) is in the userstudy folder. No participant data exist yet.")
+H3("3.2.9 Conceptual framework design")
+para(f"Using Sections 3.2.4 to 3.2.8, a conceptual framework shows where SHAP fits in a clinical decision-support pipeline: data input, risk prediction, explanation, clinician review, decision and feedback ({fr('framework')}). "
+     "Two additional gates came out of the implementation: a governance gate before data enter the model, and trust checks (fidelity, stability, direction, race attribution) before explanations reach a clinician. The framework is conceptual; it is not deployed or clinically validated.")
+figure("3", "framework", "20_conceptual_framework.png", "Conceptual framework: SHAP in a clinical decision-support pipeline, with governance and monitoring gates", 6.4)
+H3("3.2.10 Discussion, implications and contributions")
+para("Quantitative results (performance, SHAP quality, fairness) and, when available, user-study findings are synthesised in Chapters 4 and 5.")
+H3("3.2.11 Ethical considerations")
+para("The TCGA data are public and de-identified; no re-identification is attempted. Ethical approval will be sought from the relevant institutional review board before the user study, participants will give informed consent, take part voluntarily and anonymously, "
+     "and responses will be stored securely and reported in aggregate, in line with the Nigeria Data Protection Act (2023) and with reference to GDPR and HIPAA. The model is positioned as decision support and not as a replacement for clinical judgement. "
+     "Race is used as an audit variable and, as in the proposal, as a predictor whose contribution is tested; no biological effect of race is claimed, and strategies that need race at prediction time are labelled as such.")
+H3("3.2.12 Methodological limitations")
+para(f"Variable follow-up (median {FL['median_followup']:.0f} months, maximum {FL['max_followup']:.0f}; {pct(FL['living_lt60'], 0)} of living patients under 60 months) means a binary status ignores censoring; "
+     f"Section 4.8.6 quantifies this with settled-outcome analyses and an exploratory survival model (Harrell C-index {SURV['c_index_cox']:.2f} for XGBoost with a Cox objective against {SURV['c_index_binary']:.2f} for the binary score; formal survival modelling remains future work). "
+     "Overall survival includes non-cancer deaths. Clinical variables give moderate discrimination, so the main contribution lies in interpretability and the audit. The cohort is a single, predominantly European-ancestry study.")
+H2("3.3 Expected outcomes")
+bullets(["A tuned XGBoost model with documented handling of imbalance, overfitting and leakage.", "A quantitative evaluation with bootstrap intervals and baselines.",
+         "Interpretable SHAP explanations with fidelity, stability and clinical-alignment evidence.", "Evidence from the physician study on interpretability and trust (pending).",
+         "A conceptual framework for SHAP in clinical prognostic pipelines.", "An audit of racial fairness and of bias-mitigation options."])
+H2("3.4 Implementation, software and reproducibility")
 v = META["versions"]
-table("3", "Software environment", pd.DataFrame([["Python", "3.12"], ["xgboost", v["xgboost"]], ["shap", v["shap"]], ["scikit-learn", v["sklearn"]], ["pandas", v["pandas"]],
-                                                 ["Streamlit / Plotly", "dashboard"], ["python-docx", "thesis document builder"]], columns=["Component", "Version / role"]), widths=[2, 4.5])
-para(f"Random seed {META['seed']}; one command (python run_pipeline.py) regenerates every table, figure and model in about four minutes on a laptop.", align="j")
+table("3", "software", "Software environment", pd.DataFrame([["Python", "3.12"], ["xgboost", v["xgboost"]], ["shap", v["shap"]], ["scikit-learn", v["sklearn"]], ["optuna", v["optuna"]],
+                                                              ["pandas", v["pandas"]], ["Streamlit / Plotly", "dashboard"], ["python-docx", "document builder"]], columns=["Component", "Version / role"]), widths=[2, 4.5])
+para("One command (python run_pipeline.py) regenerates every table, figure and model for both specifications; the notebook, the dashboard and these chapters read the same artifacts.")
+H2("3.5 Resources required")
+bullets(["Access to the clinical dataset (public).", "A laptop-class computer (the full study runs in about 15 minutes).", "Collaboration with healthcare institutions for the user study."])
 doc.add_page_break()
 
 # =============================================================================================
@@ -284,186 +288,225 @@ doc.add_page_break()
 # =============================================================================================
 H1("4.0 Implementation and Results")
 H2("4.1 Introduction")
-para("This chapter reports what was built and found. It first describes the cohort and the data audit (Sections 4.3 and 4.4), then the model and its performance (Sections 4.5 to 4.7), "
-     "the fairness analysis and the effect of mitigation (Section 4.8), the SHAP explanations (Sections 4.9 and 4.10), and the dashboard (Section 4.11). Section 4.12 discusses the results. "
-     "All intervals are 95 % intervals; gaps are Black minus White.", align="j")
-H2("4.2 Implementation environment and pipeline")
-para("The code is organised as a small Python package (src/brca_xai: data, audit, modeling, fairness, explain, plots, pipeline), a command-line runner, an executed Jupyter notebook that narrates the "
-     "analysis, and the dashboard. The notebook, the runner and the dashboard use the same functions, so the schema of a patient is defined exactly once.", align="j")
+para("This chapter reports what was built and found. Sections 4.3 and 4.4 describe the cohort and the data audit; 4.5 to 4.7 the model, its performance and its explanations (Objectives 1 to 3); 4.8 the fairness extension; "
+     "4.9 the audit-hardened specification; 4.10 the dashboard, user-study kit and framework (Objectives 4 and 5); and 4.11 a discussion. Unless stated, intervals are 95 % intervals and gaps are Black minus White.")
+H2("4.2 Implementation environment")
+para("The code is a Python package (src/brca_xai: data, audit, modeling, evaluate, fairness, explain, plots, pipeline), a command-line runner, an executed Jupyter notebook, a Streamlit dashboard and builders for these chapters. "
+     "All use the same functions, so a patient's schema is defined once.")
 H2("4.3 Cohort description")
-T1 = C.TABLE1.copy(); T1.columns = ["Characteristic", "White", "Black"]
-table("4", "Characteristics of the study cohort by race", T1, widths=[2.6, 1.9, 1.9])
-dB, dW = FL["deaths_black"] / FL["n_black"], FL["deaths_white"] / FL["n_white"]
-para(f"Crude mortality is similar ({pct(dW)} White, {pct(dB)} Black), as are survival curves and follow-up (Figure 4.1). The groups differ in tumour biology: {C.TABLE1.set_index('characteristic').loc['PAM50 Basal', 'Black']} "
-     f"of Black patients have basal-like tumours against {C.TABLE1.set_index('characteristic').loc['PAM50 Basal', 'White']} of White patients, and Luminal A is correspondingly less common "
-     f"({C.TABLE1.set_index('characteristic').loc['PAM50 LumA', 'Black']} versus {C.TABLE1.set_index('characteristic').loc['PAM50 LumA', 'White']}). These differences are well known (DeSantis et al., 2019) and matter later, because they "
-     f"are what makes the model score the two groups differently.", align="j")
-figure("4", "01_survival_followup.png", "Kaplan-Meier survival and follow-up distribution by race")
+T1 = P.table1.copy()
+table("4", "cohort", "Characteristics of the cohort by race group (\"Other\" = Asian, Native American, race not recorded)", T1, widths=[2.2, 1.1, 1.1, 1.1, 1.1], size=8)
+para(f"Crude mortality is {pct(FL['prevalence'])} overall ({pct(FL['deaths_white'] / FL['n_white'])} White, {pct(FL['deaths_black'] / FL['n_black'])} Black, {pct(FL['deaths_other'] / FL['n_other'])} in the other group). "
+     f"Black patients differ in tumour biology (basal-like {t1.loc['PAM50 Basal', 'Black']} versus {t1.loc['PAM50 Basal', 'White']}; Luminal A {t1.loc['PAM50 LumA', 'Black']} versus {t1.loc['PAM50 LumA', 'White']}; DeSantis et al., 2019), "
+     f"and the documentation differs too: the metastasis category is MX (not assessed) for {t1.loc['M unknown (MX)', 'Black']} of Black patients against {t1.loc['M unknown (MX)', 'White']} of White patients. "
+     f"The \"other\" group has a much shorter follow-up (median {t1.loc['Follow-up months, median (IQR)', 'Other'].split(' ')[0]} months against {t1.loc['Follow-up months, median (IQR)', 'White'].split(' ')[0]}) and is used only for training.")
+figure("4", "survival", "01_survival_followup.png", "Kaplan-Meier survival and follow-up distribution, White and Black patients")
 H2("4.4 Data audit")
-H3("4.4.1 Leakage and informative missingness")
-lad = C.LADDER
-rows = [[r.rung.split("  ")[1] if "  " in r.rung else r.rung, f"{r.auc:.3f}", f"{100 * r.fpr_at_80_recall:.0f}%"] for r in lad.itertuples()]
-table("4", "Cross-validated AUC as columns that should not be inputs are added back to the model", pd.DataFrame(rows, columns=["Feature set", "AUC", "False-positive rate at 80 % recall"]), widths=[4.4, 0.8, 1.3])
-para(f"The clean model reaches an AUC of {lad.auc.iloc[0]:.2f}. Adding the informative-missingness fields raises it to {lad.auc.iloc[2]:.2f}; adding post-baseline tumour status to {lad.auc.iloc[3]:.2f}; and adding days to last "
-     f"follow-up to {lad.auc.iloc[4]:.2f}, at which the model would need to flag only {100 * lad.fpr_at_80_recall.iloc[4]:.0f}% of survivors to reach 80 % recall. None of that is prediction: follow-up days are blank "
-     f"for every patient who died. An analysis that skipped this audit would have reported a spectacular and meaningless result (Figure 4.2). The governance decision for every column is listed in "
-     f"docs/DATA_AUDIT.md and artifacts/column_governance.csv.", align="j")
-figure("4", "02_leakage_ladder.png", "How excluded columns inflate apparent performance")
+H3("4.4.1 Blanks that carry the outcome")
+mt = P.miss.copy()
+mt = mt[["column", "n_missing", "pct_missing", "death_rate_missing", "death_rate_recorded"]]
+mt = pd.DataFrame({"Column / code": mt.column, "n": mt.n_missing, "% of patients": mt.pct_missing.round(1),
+                   "Death rate if missing": mt.death_rate_missing.map(lambda x: pct(x, 1)), "Death rate if recorded": mt.death_rate_recorded.map(lambda x: pct(x, 1))})
+table("4", "missing", "Death rate when a field or code is blank versus recorded (all 1,084 patients)", mt, widths=[2.8, 0.6, 0.9, 1.1, 1.1], size=8.5)
+para(f"The revised proposal retains radiation therapy and sets NX / MX to missing, and XGBoost reads blanks natively. But radiation therapy is blank for {int(rad.n_missing)} patients, {pct(rad.death_rate_missing, 0)} of whom died against "
+     f"{pct(rad.death_rate_recorded, 0)} of those recorded; NX has a death rate of {pct(nxr.death_rate_missing, 0)} (n = {int(nxr.n_missing)}); and the {int(racem.n_missing)} patients without a recorded race have a death rate of {pct(racem.death_rate_missing, 0)}. "
+     "These are registry-documentation patterns, not biology, and a model will exploit them.")
+H3("4.4.2 Leakage ladder and artefact ablation")
+lt = pd.DataFrame({"Feature set": lad.rung.map(lambda s: s.split("  ", 1)[1]), "AUC": lad.auc.round(3), "PR-AUC": lad.pr_auc.round(3), "Precision at 80 % recall": lad.precision_at_80_recall.map(lambda x: pct(x, 1))})
+table("4", "ladder", "Cross-validated performance as columns are added", lt, widths=[3.6, 0.7, 0.8, 1.4])
+figure("4", "leakage", "02_leakage_ladder.png", "Apparent performance as excluded columns are added back", 5.8)
+para(f"Starting from audit-hardened features (AUC {lad.auc.iloc[0]:.3f}), the proposal's predictor list reaches {lad.auc.iloc[1]:.3f}, adding ethnicity and node assessment {lad.auc.iloc[2]:.3f}, post-baseline tumour status {lad.auc.iloc[3]:.3f} and days to last follow-up {lad.auc.iloc[4]:.3f}, "
+     f"at which a flagged patient would be a true death {pct(lad.precision_at_80_recall.iloc[4], 0)} of the time. The last two rungs are leakage and are rightly excluded by the revised proposal. The step from the first to the second rung is subtler and needs attention: "
+     f"{tr('specs')} and {fr('ablation')} show where it comes from.")
+sp = P.specs.set_index("spec")
+abt = pd.DataFrame({"Variant": P.ablation.variant, "AUC": P.ablation.auc.round(3), "PR-AUC": P.ablation.pr_auc.round(3)})
+table("4", "specs", "Where the as-specified model's extra AUC comes from (artefact ablation; 5 x 5 CV)", abt, widths=[4.3, 0.8, 0.9])
+figure("4", "ablation", "24_artefact_ablation.png", "Cross-validated AUC after removing documentation artefacts one at a time", 5.8)
+para(f"Removing radiation therapy alone lowers AUC from {ABL0:.3f} to {ABL_RT:.3f}; removing the NX / MX codes to {abl.iloc[3].auc:.3f}; removing the race-not-recorded signal to {abl.iloc[2].auc:.3f}; and all three to {abl.iloc[4].auc:.3f}. "
+     f"The stage-group sensitivity model reaches {sp.loc['stage_group', 'auc']:.3f} and the complete-case subtype model {sp.loc['complete_case_subtype', 'auc']:.3f}. About {100 * (ABL0 - abl.iloc[4].auc):.0f} AUC points of the as-specified model are documentation artefacts. "
+     "Both specifications are therefore carried through the study; the as-specified model is primary because it is the approved design, and the hardened model is the one this study would recommend for any use beyond the thesis.")
 H2("4.5 Model development")
-bp = P
-para(f"The search selected very shallow trees (maximum depth {bp['max_depth']}, {bp['n_estimators']} trees, learning rate {bp['learning_rate']:.3f}, L2 penalty {bp['reg_lambda']:.1f}), i.e. an additive model. "
-     f"This is informative in itself: with 933 patients and 141 events, interactions between clinical variables are not identifiable, and the signal is carried by main effects. "
-     f"Table 4.3 shows that logistic regression and a random forest are no better.", align="j")
-bn = C.BENCH
-rows = [[r.model.replace(" - used", " (used)"), f"{r.auc:.3f} ± {r.auc_sd:.3f}", f"{r.auc_White:.3f}", f"{r.auc_Black:.3f}", f"{100 * r.fpr_at_80_recall:.1f}%"] for r in bn.itertuples()]
-table("4", "Model benchmark on identical features (5 x 5-fold CV)", pd.DataFrame(rows, columns=["Model", "AUC", "AUC White", "AUC Black", "FPR at 80 % recall"]), widths=[2.9, 1.1, 0.8, 0.8, 1.0])
-figure("4", "03_model_benchmark.png", "Benchmark of candidate models", 5.8)
-para(f"The monotone constraint made no measurable difference (AUC {bn.auc.iloc[3]:.3f} without, {bn.auc.iloc[4]:.3f} with), so the clinically motivated constraint is free. "
-     f"Hyper-parameter tuning gave a modest gain over defaults ({bn.auc.iloc[2]:.3f} to {bn.auc.iloc[4]:.3f}); the tuning curves are flat, a further sign that the ceiling is set by the information in the data.", align="j")
-H2("4.6 Performance at the recall-first operating point")
-h_all, h_w, h_b = ho("blind", "All"), ho("blind", "White"), ho("blind", "Black")
-para(f"Cross-validated results (race-blind model, 5 x 5 folds): recall {ci('blind', 'tpr_all')}, false-positive rate {ci('blind', 'fpr_all')}, with {pct(cv('blind', 'flag_all')[0], 0)} of all patients flagged. "
-     f"The AUC is {auc_g('blind', 'All')[0]:.2f} ({auc_g('blind', 'All')[1]:.2f} to {auc_g('blind', 'All')[2]:.2f}). The recall target of 80 % was met within sampling error in cross-validation, confirming that thresholds learned inside the training "
-     f"folds transfer to unseen patients. The price of recall-first operation is stark: to catch four in five deaths the model must flag about two in three patients, because predictive information in "
-     f"clinical covariates is modest.", align="j")
-para(f"On the untouched hold-out set ({int(h_all.n)} patients, {int(h_all.deaths)} deaths) the race-blind model flagged {int(h_all.tp)} of {int(h_all.deaths)} deaths (recall {pct(h_all.recall, 0)}, Wilson CI {pct(h_all.recall_lo, 0)} to "
-     f"{pct(h_all.recall_hi, 0)}), with a false-positive rate of {pct(h_all.fpr, 0)} and AUC {h_all.auc:.2f}. The hold-out recall for Black patients is based on {int(h_b.deaths)} deaths ({int(h_b.tp)} caught) and is "
-     f"reported only for completeness (Figure 4.4).", align="j")
-hrows = []
-for k in KEYS:
-    for g in ["All", "White", "Black"]:
-        r = ho(k, g)
-        hrows.append([C.SHORT[k] if g == "All" else "", g, int(r.n), int(r.deaths), f"{pct(r.recall, 0)} ({pct(r.recall_lo, 0)}-{pct(r.recall_hi, 0)})", pct(r.fpr, 0), f"{r.auc:.2f}"])
-table("4", "Hold-out test results by strategy and race", pd.DataFrame(hrows, columns=["Strategy", "Group", "n", "Deaths", "Recall (Wilson CI)", "False-alarm rate", "AUC"]), widths=[1.7, 0.7, 0.5, 0.6, 1.5, 0.9, 0.5], size=8.5)
-figure("4", "09_holdout_recall.png", "Hold-out recall by race and strategy (wide intervals reflect six Black deaths)", 5.4)
-H2("4.7 Discrimination and calibration by race")
-cb = C.CAL
-cw_b = cb[(cb.strategy == "blind") & (cb.group == "Black")].iloc[0]
-cw_w = cb[(cb.strategy == "blind") & (cb.group == "White")].iloc[0]
-para(f"Discrimination is similar in the two groups but far less certain for Black patients: AUC {auc_g('blind', 'White')[0]:.2f} (White, {auc_g('blind', 'White')[1]:.2f}-{auc_g('blind', 'White')[2]:.2f}) "
-     f"versus {auc_g('blind', 'Black')[0]:.2f} (Black, {auc_g('blind', 'Black')[1]:.2f}-{auc_g('blind', 'Black')[2]:.2f}) (Figure 4.5). Calibration is good on average in both groups (observed-to-expected ratio "
-     f"{cw_w.oe_ratio:.2f} for White, {cw_b.oe_ratio:.2f} for Black), i.e. the model under-predicts the average Black death rate by about {100 * (cw_b.oe_ratio - 1):.0f}% of itself ({pct(cw_b.mean_predicted)} predicted against {pct(cw_b.observed)} observed), "
-     f"a difference too small to distinguish from sampling noise at n = {FL['n_black']}. The calibration slopes (above 1: {cw_w.slope:.2f} White, {cw_b.slope:.2f} Black) show that the heavily regularised model "
-     f"compresses its risk estimates, as expected for an additive model of limited signal.", align="j")
-figure("4", "04_roc_by_group.png", "ROC curves by race (out-of-fold risk of the race-blind model)", 4.3)
-H2("4.8 Fairness results and the effect of mitigation")
+bp = P.P
+para(f"The Bayesian search selected very shallow trees (depth {bp['max_depth']}, {bp['n_estimators']} trees, learning rate {bp['learning_rate']:.3f}, L2 penalty {bp['reg_lambda']:.1f}), i.e. at most pairwise interactions: with {FL['n_deaths']} events, higher-order interactions between clinical variables are not identifiable. "
+     f"{tr('bench')} compares models on identical features. XGBoost, logistic regression and a random forest are statistically indistinguishable, and all are far better than the stage-only model, "
+     f"which has almost no discrimination (AUC {P.bench.set_index('model').loc['Stage-only (logistic)', 'auc']:.2f}): composite stage alone is a poor predictor in this cohort.")
+bt = P.bench
+table("4", "bench", "Model benchmark (5 x 5 CV, all patients)", pd.DataFrame({"Model": bt.model.str.replace(" - used", " (used)"), "AUC": bt.auc.round(3), "PR-AUC": bt.pr_auc.round(3),
+                                                                              "FPR at 80 % recall": bt.fpr_at_80_recall.map(lambda x: pct(x, 1)), "AUC White": bt.auc_White.round(3), "AUC Black": bt.auc_Black.round(3)}),
+      widths=[2.7, 0.7, 0.8, 1.0, 0.8, 0.8], size=8.5)
+figure("4", "benchmark", "03_model_benchmark.png", "Benchmark of candidate models", 5.8)
+cv_ = P.curve
+para(f"Overfitting control ({fr('curve')}): along the boosting path training AUC rises to {cv_.train.iloc[-1]:.3f}, cross-validated AUC plateaus at {cv_.cv.iloc[-1]:.3f} and hold-out AUC is {cv_.test.iloc[-1]:.3f}. The training-to-validation gap is modest "
+     f"({cv_.train.iloc[-1] - cv_.cv.iloc[-1]:.2f}) and the cross-validated and hold-out curves are flat beyond about 150 trees, so the {bp['n_estimators']}-tree model sits on the plateau. The monotone constraint made no measurable difference ({tr('bench')}).")
+figure("4", "curve", "21_learning_curve.png", "Training, cross-validated and hold-out AUC along the boosting path", 4.8)
+H2("4.6 Performance at the recall-first operating point (Objective 2)")
+oa = lambda m: P.ov("aware", m)
+para(f"Cross-validated over all {FL['n_records']:,} patients (race-aware model), AUC-ROC is {oa('auc_roc')[0]:.3f} and PR-AUC {oa('pr_auc')[0]:.3f} against a no-skill value of {FL['prevalence']:.3f}. At the recall-first threshold the model catches {pct(oa('recall')[0])} of deaths "
+     f"(CI {pct(oa('recall')[1])} to {pct(oa('recall')[2])}), flags {pct(oa('flag_rate')[0], 0)} of patients and has a precision of {pct(oa('precision')[0])}, which clears the floor of {FL['precision_floor']:.2f}.")
+rows = []
+for m in [MAINM, "XGBoost (race-blind)", "Logistic regression", "Random forest", "Stage-only (logistic)"]:
+    rows.append([m.replace(" (race-aware, primary)", " (primary)")] + [ci3(*P.tm(m, k)) for k in ["recall", "precision", "f1", "auc_roc", "pr_auc"]] + [f"{P.tm(m, 'accuracy')[0]:.2f}"])
+table("4", "test", f"Hold-out test results ({FL['n_test']} patients, {FL['test_deaths']} deaths; estimate (95 % bootstrap CI))", pd.DataFrame(rows, columns=["Model", "Recall", "Precision", "F1", "AUC-ROC", "PR-AUC", "Accuracy"]),
+      widths=[1.4, 1.0, 1.0, 1.0, 1.0, 1.0, 0.7], size=8)
+para(f"On the hold-out set the primary model flagged {int(P.confusion.iloc[0].tp)} of {FL['test_deaths']} deaths (recall {ci3(*P.tm(MAINM, 'recall'))}), with precision {P.tm(MAINM, 'precision')[0]:.2f}, AUC-ROC {ci3(*P.tm(MAINM, 'auc_roc'))} and PR-AUC {ci3(*P.tm(MAINM, 'pr_auc'))}. "
+     f"The hold-out recall of {P.tm(MAINM, 'recall')[0]:.2f} is below the 80 % target that was met on the development data and in cross-validation ({pct(oa('recall')[0], 0)}), but the target lies inside its interval: with {FL['test_deaths']} deaths, one more or fewer caught death moves recall by three points. "
+     f"Its accuracy of {P.tm(MAINM, 'accuracy')[0]:.2f} is far below the {1 - FL['test_deaths'] / FL['n_test']:.2f} of always predicting \"living\": this is the price of recall-first operation, and accuracy is the wrong yardstick here. "
+     f"The intervals of XGBoost, logistic regression and the random forest overlap almost completely ({fr('forest')}), whereas the stage-only model is clearly worse in PR-AUC.")
+figure("4", "forest", "23_test_forest.png", "Hold-out recall, AUC-ROC and PR-AUC with bootstrap intervals", 6.4)
+rr = P.rules
+rt_ = pd.DataFrame({"Rule": rr.rule, "Threshold": rr.threshold.round(3), "Recall (hold-out)": rr.recall.round(2), "Precision": rr.precision.round(2), "Share flagged": rr.flag_rate.map(lambda x: pct(x, 0)), "Recall (dev, OOF)": rr.dev_recall.round(2)})
+table("4", "rules", "Threshold rules learned on the development set and applied to the hold-out set", rt_, widths=[2.3, 0.8, 0.9, 0.8, 0.8, 0.9], size=8.5)
+para(f"The proposal asks for a threshold that \"maximises recall at an acceptable precision\". A rule that only maximises recall subject to a precision floor close to the prevalence returns a threshold that flags {pct(rr.flag_rate.iloc[2], 0)} of patients; "
+     f"rules that balance precision and recall (Youden, default 0.5) each give up {pct(1 - rr.recall.iloc[4], 0)} of deaths on the hold-out set. The recall target of 80 % is the only rule that makes the recall-first priority explicit and reproducible ({fr('pr')}).")
+figure("4", "pr", "22_precision_recall.png", "Hold-out precision-recall curve with the threshold rules of the table above", 5.0)
+H2("4.7 SHAP analysis (Objective 3)")
+H3("4.7.1 Global and local explanations")
+al = P.align
+para(f"{fr('beeswarm')} ranks the drivers of the as-specified model: {al.feature.iloc[0]} (mean |SHAP| {al.mean_abs_shap.iloc[0]:.2f} log-odds), {al.feature.iloc[1]} ({al.mean_abs_shap.iloc[1]:.2f}), {al.feature.iloc[2]} ({al.mean_abs_shap.iloc[2]:.2f}), "
+     f"{al.feature.iloc[3]} ({al.mean_abs_shap.iloc[3]:.2f}) and {al.feature.iloc[4]} ({al.mean_abs_shap.iloc[4]:.2f}). Three of these five are established prognostic factors; the other two are not: radiation therapy is a treatment-documentation field and "
+     f"the Asian-race indicator reflects three deaths among 60 patients. The staging effects point in the expected direction (Spearman correlation between value and SHAP: age {P.direction.spearman.iloc[0]:.2f}, T {P.direction.spearman.iloc[1]:.2f}, N {P.direction.spearman.iloc[2]:.2f}, M {P.direction.spearman.iloc[3]:.2f}).")
+figure("4", "beeswarm", "12_shap_beeswarm.png", "SHAP summary (beeswarm) of the as-specified model", 5.6)
+figure("4", "dependence", "14_dependence.png", "SHAP dependence plots for age, nodal status and tumour size by race", 6.4)
+para(f"Local explanations ({fr('wf_tp')} to {fr('wf_tn')}) show the reasoning for a Black patient whose death was caught, a Black patient whose death was missed, and a White survivor correctly not flagged. "
+     "They let a reviewer see why the missed death fell below the threshold: young age and node-negative status subtracted more risk than the weak positive signals added.")
+for k, n_, t_ in [("wf_tp", "true_positive_black", "True positive (Black patient)"), ("wf_fn", "false_negative_black", "False negative (Black patient)"), ("wf_tn", "true_negative_white", "True negative (White patient)")]:
+    figure("4", k, f"15_waterfall_{n_}.png", f"Waterfall explanation: {t_}", 4.6)
+H3("4.7.2 Quality of the explanations")
+dl = P.deletion.set_index("k")
+eqt = pd.DataFrame([["Fidelity: max |base + sum(SHAP) - margin|", f"{EQ['fidelity']['max_abs_error']:.1e} over {EQ['fidelity']['n']:,} patients"],
+                    ["Stability across 10 CV-fold models (mean / min Spearman)", f"{EQ['fold_stability']['mean_spearman']:.2f} / {EQ['fold_stability']['min_spearman']:.2f}"],
+                    ["Stability across 100 bootstrap refits (mean Spearman)", f"{EQ['bootstrap_stability']:.2f}"],
+                    ["Agreement with XGBoost gain / weight / cover importance (Spearman)", f"{EQ['builtin']['gain']:.2f} / {EQ['builtin']['weight']:.2f} / {EQ['builtin']['cover']:.2f}"],
+                    ["Deletion test: AUC after blanking the top-1 / top-2 attributed features", f"{dl.loc[1, 'auc_top_shap']:.2f} / {dl.loc[2, 'auc_top_shap']:.2f} (random: {dl.loc[1, 'auc_random']:.2f} / {dl.loc[2, 'auc_random']:.2f}; intact {dl.loc[0, 'auc_top_shap']:.2f})"],
+                    ["Clinical alignment: top-5 features that are established prognostic factors", f"{int(al.established_prognostic_factor.map(lambda x: not x.startswith('no')).sum())} of 5"]], columns=["Criterion", "Result"])
+table("4", "explq", "Explanation quality of the as-specified model", eqt, widths=[3.8, 2.7])
+check(dl.loc[1, "auc_top_shap"] < dl.loc[1, "auc_random"], "deletion of top-attributed feature hurts more than random")
+para(f"Fidelity holds to numerical precision, as it must for TreeSHAP. Rankings are stable (rank correlation {EQ['fold_stability']['mean_spearman']:.2f} across fold models, {EQ['bootstrap_stability']:.2f} across bootstraps) and agree with XGBoost's own gain importance ({EQ['builtin']['gain']:.2f}). "
+     f"The deletion test confirms that SHAP points at what the model really uses: blanking the single most-attributed feature takes AUC from {dl.loc[0, 'auc_top_shap']:.2f} to {dl.loc[1, 'auc_top_shap']:.2f}, against {dl.loc[1, 'auc_random']:.2f} for a random feature ({fr('deletion')}). "
+     "Faithful and stable explanations of a model that leans on documentation artefacts are not the same as clinically meaningful explanations, which is why alignment is reported separately.")
+figure("4", "deletion", "26_deletion_test.png", "Faithfulness (deletion) test", 4.4)
+H3("4.7.3 The race check")
+para(f"For the {int(rs.loc['race recorded', 'n'])} patients whose race is recorded the race columns carry {pct(rs.loc['race recorded', 'share_of_total_attribution'], 0)} of the attribution. For the {int(unk.n)} patients whose race is not recorded they carry "
+     f"{pct(unk.share_of_total_attribution, 0)}, with a mean effect of {unk.mean_race_shap:+.2f} log-odds; their observed death rate is {pct(unk.death_rate, 1)}. The model has learned that a blank race field means low risk ({fr('racemiss')}). "
+     f"The check therefore finds that the model does not rely on race itself, but it does rely on whether race was documented.")
+figure("4", "racemiss", "25_race_missing_signal.png", "Attribution carried by the race columns, and observed mortality, by whether race was recorded", 5.4)
+H2("4.8 Fairness audit and bias mitigation (extension)")
 H3("4.8.1 Equal opportunity and false-alarm burden")
-para(f"At the recall-first operating point of the baseline (race-aware) model, recall is {pct(cv('aware', 'tpr_W')[0])} for White and {pct(cv('aware', 'tpr_B')[0])} for Black patients: a gap of "
-     f"{ci('aware', 'tpr_gap', True)}. There is therefore no evidence that Black patients' deaths are missed more often. The interval, however, spans roughly ±14 points, so a clinically important recall "
-     f"gap cannot be excluded, which is a statement about the amount of data (30 Black deaths) rather than about the model. The burden of false alarms differs more: the false-alarm rate is {pct(cv('aware', 'fpr_W')[0])} among White and "
-     f"{pct(cv('aware', 'fpr_B')[0])} among Black survivors, a gap of {ci('aware', 'fpr_gap', True)} (Figure 4.6, Figure 4.7).", align="j")
-figure("4", "05_rates_by_race.png", "Recall and false-alarm rate by race for all five strategies (5 x 5-fold CV, bootstrap CI)", 6.4)
-grows = []
-for k in KEYS:
-    grows.append([C.SHORT[k], pct(cv(k, "tpr_W")[0]), pct(cv(k, "tpr_B")[0]), ci(k, "tpr_gap", True), ci(k, "fpr_gap", True), pct(cv(k, "eod")[0]), pct(cv(k, "flag_all")[0], 0)])
-table("4", "Fairness metrics by strategy (Black minus White; 95 % bootstrap CI)", pd.DataFrame(grows, columns=["Strategy", "Recall White", "Recall Black", "Recall gap", "False-alarm gap", "Equalised-odds diff.", "Flagged"]),
-      widths=[1.4, 0.7, 0.7, 1.3, 1.3, 0.8, 0.6], size=8)
-figure("4", "06_gap_forest.png", "Recall and false-alarm gaps with 95 % intervals", 6.2)
-H3("4.8.2 Did mitigation help?")
-pr, pg, pw, pwg = paired("reweigh", "fpr_gap"), paired("gthr", "tpr_gap"), paired("blind", "fpr_gap"), paired("reweigh_gthr", "fpr_gap")
-para(f"Differences between strategies are small compared with the uncertainty of each, so the paired bootstrap is used. (i) Removing race (race-blind) changes the false-alarm gap by {pw[0]:+.3f} "
-     f"(CI {pw[1]:+.3f} to {pw[2]:+.3f}) and leaves explanations unchanged: the baseline model never used the race indicator (mean |SHAP| {C.IMPM.loc['race_black', 'aware']:.3f}), so awareness and unawareness "
-     f"are, in effect, the same model here. (ii) Reweighing reduces the false-alarm gap by {-pr[0]:.3f} (CI {pr[1]:+.3f} to {pr[2]:+.3f}), a small but statistically supported improvement that does not require race "
-     f"at prediction time. (iii) Group-specific thresholds do not equalise recall in practice: the recall gap changes by {pg[0]:+.3f} (CI {pg[1]:+.3f} to {pg[2]:+.3f}) because the Black-specific threshold "
-     f"is estimated from about 30 deaths and varies from fold to fold (standard deviation {C.THR[(C.THR.strategy == 'gthr') & (C.THR.threshold == 'Black')]['sd'].iloc[0]:.3f} against "
-     f"{C.THR[(C.THR.strategy == 'gthr') & (C.THR.threshold == 'White')]['sd'].iloc[0]:.3f} for White), and it raises the overall workload ({pct(cv('gthr', 'flag_all')[0], 0)} flagged against "
-     f"{pct(cv('aware', 'flag_all')[0], 0)}). (iv) Combining reweighing and group thresholds gives the smallest false-alarm gap ({ci('reweigh_gthr', 'fpr_gap', True)}; paired change {pwg[0]:+.3f}, CI {pwg[1]:+.3f} to {pwg[2]:+.3f}) at "
-     f"the highest cost in flagged patients (Figure 4.8).", align="j")
-prow = []
+para(f"For the race-aware baseline, recall is {pct(P.cv('aware', 'tpr_W')[0])} for White and {pct(P.cv('aware', 'tpr_B')[0])} for Black patients: a gap of {P.ci('aware', 'tpr_gap', True)}. "
+     f"The false-alarm rate is {pct(P.cv('aware', 'fpr_W')[0])} against {pct(P.cv('aware', 'fpr_B')[0])}, a gap of {P.ci('aware', 'fpr_gap', True)}. Neither gap is distinguishable from zero, but with {FL['deaths_black']} Black deaths the recall-gap interval is about ±{100 * HW:.0f} points wide, so a smaller gap could not be detected ({fr('rates')}, {fr('gaps')}, {tr('fair')}).")
+figure("4", "rates", "05_rates_by_race.png", "Recall and false-alarm rate by race for the five strategies (5 x 5 CV, bootstrap CI)", 6.4)
+fr_rows = [[SHORT[k], pct(P.cv(k, "tpr_W")[0]), pct(P.cv(k, "tpr_B")[0]), P.ci(k, "tpr_gap", True).replace(" percentage points", " pp"), P.ci(k, "fpr_gap", True).replace(" percentage points", " pp"), pct(P.cv(k, "eod")[0])] for k in KEYS]
+table("4", "fair", "Fairness metrics by strategy (Black minus White; 95 % bootstrap CI)", pd.DataFrame(fr_rows, columns=["Strategy", "Recall White", "Recall Black", "Recall gap", "False-alarm gap", "Equalised-odds diff."]),
+      widths=[1.5, 0.7, 0.7, 1.4, 1.4, 0.8], size=8)
+figure("4", "gaps", "06_gap_forest.png", "Recall and false-alarm gaps with 95 % intervals", 6.2)
+H3("4.8.2 What did mitigation do?")
+pb, prw, pg, prg = P.paired_("blind", "tpr_gap"), P.paired_("reweigh", "tpr_gap"), P.paired_("gthr", "tpr_gap"), P.paired_("reweigh_gthr", "eod")
+fb, frw, fg = P.paired_("blind", "fpr_gap"), P.paired_("reweigh", "fpr_gap"), P.paired_("gthr", "fpr_gap")
+rb = P.imp.loc["race_black"]; rbs = P.gap.loc["race_black", "contribution_to_gap"]
+para(f"Differences between strategies are small compared with the uncertainty of each, so a paired bootstrap is used ({tr('paired')}). "
+     f"(i) Race is not inert in this model: the Black indicator adds {rbs:+.3f} log-odds to the average Black-minus-White score gap. Removing race (race-blind) lowers the false-alarm gap (paired change {fb[0]:+.3f}, CI {fb[1]:+.3f} to {fb[2]:+.3f}) "
+     f"but also moves the recall gap by {pb[0]:+.3f} (CI {pb[1]:+.3f} to {pb[2]:+.3f}), so unawareness trades Black recall for fewer false alarms rather than being neutral. "
+     f"(ii) Reweighing does the same more strongly: the recall gap falls by {-prw[0]:.3f} (CI {prw[1]:+.3f} to {prw[2]:+.3f}), i.e. fewer Black deaths are caught, while the false-alarm gap changes by {frw[0]:+.3f} (CI {frw[1]:+.3f} to {frw[2]:+.3f}). "
+     f"In a recall-first system this is the wrong direction. (iii) Group-specific thresholds target equal opportunity directly: the gaps become {100 * P.cv('gthr', 'tpr_gap')[0]:+.1f} (recall) and {100 * P.cv('gthr', 'fpr_gap')[0]:+.1f} (false alarms) points, and the equalised-odds difference falls from {pct(P.cv('aware', 'eod')[0])} to {pct(P.cv('gthr', 'eod')[0])}. "
+     f"Relative to the baseline, whose higher Black recall comes from the race term, their paired recall-gap change is {pg[0]:+.3f} (CI {pg[1]:+.3f} to {pg[2]:+.3f}); the improvement in the equalised-odds difference itself is not statistically distinguishable "
+     f"(paired change {P.paired_('gthr', 'eod')[0]:+.3f}, CI {P.paired_('gthr', 'eod')[1]:+.3f} to {P.paired_('gthr', 'eod')[2]:+.3f}), and the Black-specific threshold is estimated from about 30 deaths and varies across folds (SD "
+     f"{P.thr[(P.thr.strategy == 'gthr') & (P.thr.threshold == 'Black')]['sd'].iloc[0]:.3f} against {P.thr[(P.thr.strategy == 'gthr') & (P.thr.threshold == 'White')]['sd'].iloc[0]:.3f} for White). "
+     f"(iv) Reweighing combined with group thresholds has the smallest equalised-odds difference ({pct(P.cv('reweigh_gthr', 'eod')[0])}) and near-equal recall ({P.ci('reweigh_gthr', 'tpr_gap', True).replace(' percentage points', ' points')}).")
+pt = []
 for k in KEYS[1:]:
-    for m, nm in [("tpr_gap", "Recall gap"), ("fpr_gap", "False-alarm gap")]:
-        d, lo, hi, p = paired(k, m)
-        prow.append([C.SHORT[k], nm, f"{d:+.3f}", f"[{lo:+.3f}, {hi:+.3f}]", "yes" if (lo > 0 or hi < 0) else "no"])
-table("4", "Paired bootstrap change in each gap relative to the baseline", pd.DataFrame(prow, columns=["Strategy", "Gap", "Change", "95 % CI", "Distinguishable from 0?"]), widths=[1.9, 1.3, 0.8, 1.4, 1.1])
-figure("4", "07_tradeoff.png", "Cost of fairness: workload against equalised-odds difference", 4.6)
-H3("4.8.3 Threshold stability")
-para("Group thresholds depend on the number of deaths in each group, which explains their failure. Learned inside cross-validation folds, the global threshold has a standard deviation of "
-     f"{C.THR[(C.THR.strategy == 'blind') & (C.THR.threshold == 'global')]['sd'].iloc[0]:.3f}, the White threshold {C.THR[(C.THR.strategy == 'blind') & (C.THR.threshold == 'White')]['sd'].iloc[0]:.3f} and the Black threshold "
-     f"{C.THR[(C.THR.strategy == 'blind') & (C.THR.threshold == 'Black')]['sd'].iloc[0]:.3f} (artifacts/cv_thresholds.csv).", align="j")
-H3("4.8.4 Sensitivity to the recall target")
-sw = C.SWEEP
+    for m, nm in [("tpr_gap", "Recall gap"), ("fpr_gap", "False-alarm gap"), ("eod", "Equalised-odds diff.")]:
+        d, lo, hi, p = P.paired_(k, m)
+        pt.append([SHORT[k], nm, f"{d:+.3f}", f"[{lo:+.3f}, {hi:+.3f}]", "yes" if (lo > 0 or hi < 0) else "no"])
+table("4", "paired", "Paired bootstrap change in each gap relative to the race-aware baseline", pd.DataFrame(pt, columns=["Strategy", "Metric", "Change", "95 % CI", "Distinguishable from 0?"]), widths=[1.9, 1.5, 0.8, 1.3, 1.1], size=8.5)
+figure("4", "tradeoff", "07_tradeoff.png", "Cost of fairness: workload against equalised-odds difference", 4.5)
+H3("4.8.3 Sensitivity to the recall target")
+sw = P.sweep
 sg = sw[(sw.metric == "tpr_gap") & (sw.strategy == "aware")].estimate
 sf = sw[(sw.metric == "fpr_gap") & (sw.strategy == "aware")].estimate
-para(f"Across targets from 70 % to 95 % the baseline recall gap stays between {sg.min():+.3f} and {sg.max():+.3f} and the false-alarm gap between {sf.min():+.3f} and {sf.max():+.3f} (Figure 4.9). "
-     f"The qualitative conclusion, no consistent recall gap and a modest positive false-alarm gap, does not depend on the choice of 80 %. Group thresholds flip the sign of the recall gap at lower targets, "
-     f"which again reflects estimation noise rather than a systematic effect.", align="j")
-figure("4", "08_recall_target_sweep.png", "Gaps as the recall target varies from 70 % to 95 %", 6.2)
-H3("4.8.5 Sensitivity to censoring and to the definition of the groups")
-s24, s36, s60 = sens(24, "aware", "fpr_gap"), sens(36, "aware", "fpr_gap"), sens(60, "aware", "fpr_gap")
-para(f"A patient who is alive at 6 months counts as a survivor but may die later, and this label noise can differ by group. Restricting evaluation to patients who died or were followed for at least "
-     f"24, 36 or 60 months (n = {sens_n(24)}, {sens_n(36)} and {sens_n(60)}) leaves the recall gap near zero but widens the false-alarm gap to {s24[0]:+.3f}, {s36[0]:+.3f} (CI {s36[1]:+.3f} to {s36[2]:+.3f}) "
-     f"and {s60[0]:+.3f} (CI {s60[1]:+.3f} to {s60[2]:+.3f}) (Figure 4.10). Long-followed Black survivors are therefore flagged noticeably more often than long-followed White survivors; "
-     f"this is the most consistent signal of a disparity in the analysis. Defining groups by genetic ancestry instead of self-reported race gives the same picture "
-     f"(race-blind model: recall {pct(C.ANC[(C.ANC.strategy == 'blind') & (C.ANC.group.str.startswith('AFR'))].recall.iloc[0], 0)} for African ancestry (n = 125, 24 deaths) against "
-     f"{pct(C.ANC[(C.ANC.strategy == 'blind') & (C.ANC.group.str.startswith('EUR'))].recall.iloc[0], 0)} for European; false-alarm rate "
-     f"{pct(C.ANC[(C.ANC.strategy == 'blind') & (C.ANC.group.str.startswith('AFR'))].fpr.iloc[0], 0)} against {pct(C.ANC[(C.ANC.strategy == 'blind') & (C.ANC.group.str.startswith('EUR'))].fpr.iloc[0], 0)}).", align="j")
-figure("4", "11_sensitivity_settled.png", "Gaps when evaluation is restricted to patients with settled outcomes", 6.2)
-H2("4.9 SHAP analysis")
-H3("4.9.1 Global explanation")
-top = C.IMP.head(5)
-para(f"Figure 4.11 ranks the drivers of predicted risk. Age at diagnosis ({C.IMP.loc['age', 'White']:.2f} mean |SHAP|, log-odds) and nodal status ({C.IMP.loc['n_stage', 'White']:.2f}) dominate, followed by Luminal A subtype "
-     f"({C.IMP.loc['sub_luma', 'White']:.2f}, protective), tumour size ({C.IMP.loc['t_stage', 'White']:.2f}) and distant metastasis ({C.IMP.loc['m_stage', 'White']:.2f}). Metastasis occurs in only 17 patients but is the single largest contribution when present "
-     f"(+1.5 log-odds). The direction of every staging effect agrees with oncological knowledge (Spearman correlation between value and SHAP: age {C.DIRN.spearman.iloc[0]:.2f}, T {C.DIRN.spearman.iloc[1]:.2f}, "
-     f"N {C.DIRN.spearman.iloc[2]:.2f}, M {C.DIRN.spearman.iloc[3]:.2f}), which gives the clinician-alignment evidence asked for in the proposal. Prior malignancy, \"other\" histology and the rarer PAM50 groups carry little weight.", align="j")
-figure("4", "12_shap_beeswarm.png", "SHAP beeswarm summary of the race-blind model", 5.6)
-figure("4", "14_dependence.png", "SHAP dependence plots for age, nodal status and tumour size by race", 6.4)
-H3("4.9.2 Local explanations")
-para("Figures 4.13 to 4.15 show the explanation of individual patients: a Black patient whose death was correctly flagged, a Black patient whose death was missed, and a White survivor correctly "
-     "not flagged. The waterfall plots let a reviewer see why the missed death fell below the recall-first threshold: young age and absent nodal involvement subtracted more risk than the weak positive signals added.", align="j")
-for n_, t_ in [("true_positive_black", "True positive (Black patient)"), ("false_negative_black", "False negative (Black patient)"), ("true_negative_white", "True negative (White patient)")]:
-    figure("4", f"15_waterfall_{n_}.png", f"Waterfall explanation: {t_}", 4.8)
-H2("4.10 How explanations differ by race and under mitigation")
-H3("4.10.1 Feature importance by group")
-rk_same = (C.IMP.rank_White == C.IMP.rank_Black).mean()
-para(f"Importance is nearly identical in the two groups (Figure 4.16): the ranks agree for {pct(rk_same, 0)} of features, and the largest ratio Black/White among the top five is {C.IMP.head(5).ratio_B_over_W.max():.2f}. "
-     f"The model therefore reasons about Black and White patients in the same way; it does not rely on different, possibly spurious, features for either group.", align="j")
-figure("4", "13_importance_by_race.png", "Mean absolute SHAP value by race", 5.4)
-H3("4.10.2 Why do the groups receive different average risk?")
-tg = C.GAP.attrs if hasattr(C.GAP, "attrs") else {}
-para(f"The average predicted log-odds is {META['risk_gap_total']:+.3f} higher for Black patients. The decomposition (Figure 4.17) attributes almost all of this to the PAM50 subtype: Luminal A, which the model "
-     f"treats as protective, is half as common among Black patients ({C.TABLE1.set_index('characteristic').loc['PAM50 LumA', 'Black']} versus {C.TABLE1.set_index('characteristic').loc['PAM50 LumA', 'White']}) and accounts for "
-     f"{C.GAP.loc['sub_luma', 'contribution_to_gap']:+.3f} of the gap; lobular histology adds {C.GAP.loc['histology_lobular', 'contribution_to_gap']:+.3f}, metastasis (more frequent among Black patients, {C.TABLE1.set_index('characteristic').loc['M1', 'Black']} versus {C.TABLE1.set_index('characteristic').loc['M1', 'White']}) adds {C.GAP.loc['m_stage', 'contribution_to_gap']:+.3f}, while a younger age profile and a slightly lower nodal burden "
-     f"work in the opposite direction. The group difference in predicted risk is thus explained by documented biological and case-mix differences, not by race as such.", align="j")
-figure("4", "16_risk_gap_decomposition.png", "Contributions to the Black-minus-White gap in mean predicted log-odds", 5.4)
-H3("4.10.3 Missed deaths")
-pf = C.PROFILE
-fnb = pf[(pf.group == "Black") & pf.outcome.str.startswith("FN")].iloc[0]
-fnw = pf[(pf.group == "White") & pf.outcome.str.startswith("FN")].iloc[0]
-para(f"Figure 4.18 contrasts caught and missed deaths. In both groups missed deaths are the younger, node-negative patients: for Black patients (n = {int(fnb.n)} missed) age contributes {fnb.age:+.2f} and nodal status "
-     f"{fnb.n_stage:+.2f} on average, for White patients (n = {int(fnw.n)}) {fnw.age:+.2f} and {fnw.n_stage:+.2f}. The mechanism of a miss is the same in both groups; the model fails to see deaths that clinical staging does not "
-     f"foreshadow, which is a limit of the data rather than an unequal treatment of one group.", align="j")
-figure("4", "17_missed_deaths_profile.png", "Mean SHAP of caught and missed deaths by race", 6.2)
-H3("4.10.4 Explanations under mitigation")
+para(f"Across recall targets from 70 % to 95 % the baseline recall gap stays between {sg.min():+.3f} and {sg.max():+.3f} and the false-alarm gap between {sf.min():+.3f} and {sf.max():+.3f} ({fr('sweep')}). "
+     "The sign and rough size of the gaps do not depend on the 80 % target, and the intervals are as wide as at 80 %. The false-alarm gap of the group-threshold strategies changes sign at high targets, which again reflects noise in thresholds estimated from few deaths.")
+figure("4", "sweep", "08_recall_target_sweep.png", "Gaps as the recall target varies from 70 % to 95 %", 6.2)
+H3("4.8.4 Sensitivity to model selection")
+mm = ms[ms.strategy.isin(["aware", "blind", "gthr"]) & ms.metric.isin(["tpr_gap", "fpr_gap"])].pivot_table(index=["strategy", "metric"], columns="config", values="estimate")
+cols_ = list(mm.columns)
+mrows = []
+for (k, m), r_ in mm.iterrows():
+    mrows.append([SHORT[k], "Recall gap" if m == "tpr_gap" else "False-alarm gap"] + [f"{100 * v:+.1f}" for v in r_.values])
+table("4", "msens", "Gap estimates (percentage points, Black minus White) across near-equivalent tuned configurations (3 x 5-fold CV)",
+      pd.DataFrame(mrows, columns=["Strategy", "Metric"] + [c.replace("top-", "#").replace(" trees", "t").replace("depth ", "d") for c in cols_]), widths=[1.3, 1.1] + [0.65] * len(cols_), size=7.5)
+bl = mm.loc[("blind", "tpr_gap")]; ga = mm.loc[("aware", "tpr_gap")]; gt = mm.loc[("gthr", "tpr_gap")]
+cva = ms.groupby("config").cv_auc.first()
+para(f"The cross-validated AUC of these configurations differs by only {100 * (cva.max() - cva.min()):.1f} points, yet the baseline recall gap ranges from {100 * ga.min():+.1f} to {100 * ga.max():+.1f} points: "
+     f"point estimates of group gaps are partly an accident of model selection and should not be quoted without that caveat ({tr('msens')}). Two conclusions are stable across all configurations: removing race lowers the recall gap "
+     f"(to between {100 * bl.min():+.1f} and {100 * bl.max():+.1f} points, always negative), and group thresholds hold the recall gap within {100 * gt.abs().max():.1f} points of zero.")
+H3("4.8.5 Discrimination and calibration by race")
+cal = P.cal.set_index(["strategy", "group"])
+para(f"Discrimination is similar but less certain for Black patients: AUC {ci3(*P.auc('aware', 'White'))} (White) against {ci3(*P.auc('aware', 'Black'))} (Black) ({fr('roc')}). Class weighting inflates raw scores, so they were recalibrated with one logistic (Platt) mapping fitted to all patients' out-of-fold scores. "
+     f"With that shared mapping the observed-to-expected death ratio is {cal.loc[('aware', 'White'), 'oe_ratio']:.2f} for White and {cal.loc[('aware', 'Black'), 'oe_ratio']:.2f} for Black patients in the race-aware model, "
+     f"and {cal.loc[('blind', 'White'), 'oe_ratio']:.2f} and {cal.loc[('blind', 'Black'), 'oe_ratio']:.2f} in the race-blind model: removing race increases the under-prediction of Black mortality from {100 * (cal.loc[('aware', 'Black'), 'oe_ratio'] - 1):.0f}% to {100 * (cal.loc[('blind', 'Black'), 'oe_ratio'] - 1):.0f}% ({fr('calib')}). "
+     f"The within-group calibration slope is {cal.loc[('aware', 'White'), 'within_group_slope']:.2f} for White and {cal.loc[('aware', 'Black'), 'within_group_slope']:.2f} for Black patients: the score separates risk less sharply in the smaller group.")
+ct = P.cal.copy()
+table("4", "calib", "Calibration after one shared recalibration, by race", pd.DataFrame({"Model": ct.strategy.map({"aware": "Race-aware", "blind": "Race-blind"}), "Group": ct.group, "Observed death rate": ct.observed.map(pct),
+                                                                                     "Mean recalibrated risk": ct.mean_recalibrated.map(pct), "Observed / expected": ct.oe_ratio.round(2), "Within-group slope": ct.within_group_slope.round(2)}), widths=[1.2, 0.8, 1.2, 1.4, 1.1, 1.0])
+figure("4", "roc", "04_roc_by_group.png", "ROC curves by race (out-of-fold)", 4.2)
+figure("4", "calib", "10_calibration.png", "Calibration by race after a shared Platt mapping", 4.2)
+H3("4.8.6 Censoring, group definition and the hold-out set")
+s24, s36, s60 = P.sens_(24, "aware", "fpr_gap"), P.sens_(36, "aware", "fpr_gap"), P.sens_(60, "aware", "fpr_gap")
+anc = P.anc.set_index(["strategy", "group"])
+para(f"Restricting evaluation to patients who died or were followed at least 24, 36 or 60 months (n = {P.sens_n(24)}, {P.sens_n(36)}, {P.sens_n(60)}) moves the baseline false-alarm gap from {s24[0]:+.3f} to {s36[0]:+.3f} and {s60[0]:+.3f} "
+     f"(CIs {s24[1]:+.2f} to {s24[2]:+.2f}, {s36[1]:+.2f} to {s36[2]:+.2f}, {s60[1]:+.2f} to {s60[2]:+.2f}; {fr('sensitivity')}); none excludes zero, but the drift towards more false alarms for Black patients with longer follow-up is worth monitoring. "
+     f"Using genetic ancestry instead of race, recall is {pct(anc.loc[('aware', 'AFR / AFR-admixed ancestry'), 'recall'], 0)} for African ancestry (n = {int(anc.loc[('aware', 'AFR / AFR-admixed ancestry'), 'n'])}, {int(anc.loc[('aware', 'AFR / AFR-admixed ancestry'), 'deaths'])} deaths) against {pct(anc.loc[('aware', 'EUR ancestry'), 'recall'], 0)} for European ancestry, in line with the race-based result.")
+figure("4", "sensitivity", "11_sensitivity_settled.png", "Gaps when evaluation is restricted to patients with settled outcomes", 6.0)
+hr = pd.DataFrame([[SHORT[k], g, int(P.ho(k, g).n), int(P.ho(k, g).deaths), f"{pct(P.ho(k, g).recall, 0)} ({pct(P.ho(k, g).recall_lo, 0)}-{pct(P.ho(k, g).recall_hi, 0)})", pct(P.ho(k, g).fpr, 0), f"{P.ho(k, g).auc:.2f}"]
+                   for k in ["aware", "blind", "gthr"] for g in ["White", "Black"]], columns=["Strategy", "Group", "n", "Deaths", "Recall (Wilson CI)", "False-alarm rate", "AUC"])
+table("4", "holdrace", "Hold-out results by race (single split; very wide intervals)", hr, widths=[1.6, 0.8, 0.5, 0.6, 1.5, 1.0, 0.6], size=8.5)
+para(f"The hold-out set contains only {FL['test_black_deaths']} Black deaths. Its group-level recall ({pct(P.ho('aware', 'Black').recall, 0)} for Black patients) is an anecdote and supports no fairness statement; this is why the audit rests on repeated cross-validation ({fr('holdout_race')}).")
+figure("4", "holdout_race", "09_holdout_recall.png", "Hold-out recall by race and strategy", 5.0)
+H3("4.8.7 Why the groups are scored differently, and why deaths are missed")
+gd = P.gap
+para(f"The mean model score differs by only {META['risk_gap_total']:+.3f} log-odds between Black and White patients, but only because opposing terms cancel ({fr('gapdecomp')}): the Black indicator adds {gd.loc['race_black', 'contribution_to_gap']:+.3f}, "
+     f"while the metastasis category contributes {gd.loc['m_stage', 'contribution_to_gap']:+.3f} and radiation {gd.loc['radiation', 'contribution_to_gap']:+.3f}, in the opposite direction. The last two come from documentation: Black patients are more often recorded as MX ({t1.loc['M unknown (MX)', 'Black']} against {t1.loc['M unknown (MX)', 'White']}), "
+     f"a code with a low death rate ({pct(mxr.death_rate_missing, 0)}) that pulls their scores down. Missed deaths ({fr('profile')}) are younger and node-negative patients in both groups, so the mechanism of a miss is shared. "
+     f"Feature importance is nearly the same in both groups ({fr('imp_race')}), and the importance ranking among Black patients is stable only at the top ({fr('stability')}).")
+figure("4", "imp_race", "13_importance_by_race.png", "Mean absolute SHAP value by race", 5.3)
+figure("4", "gapdecomp", "16_risk_gap_decomposition.png", "Contributions to the Black-minus-White gap in mean model score", 5.2)
+figure("4", "profile", "17_missed_deaths_profile.png", "Mean SHAP of caught and missed deaths by race", 6.1)
+figure("4", "stability", "18_shap_stability_black.png", "Bootstrap stability of the importance rank among Black patients", 5.2)
 ag = META["agreement"]
-para(f"Mitigation barely alters the explanations. Importance rankings of the race-blind and baseline models have a rank correlation of {ag['blind_vs_aware']['rank_corr']:.2f}, and of the race-blind and reweighed models "
-     f"{ag['blind_vs_reweigh']['rank_corr']:.2f}; the per-patient correlation of full SHAP vectors is {ag['blind_vs_aware']['per_patient_rank_corr']:.2f} and {ag['blind_vs_reweigh']['per_patient_rank_corr']:.2f} (Figure 4.19). "
-     f"A clinician can therefore adopt reweighing without relearning how to read the model.", align="j")
-figure("4", "19_explanations_under_mitigation.png", "Feature importance for the baseline, race-blind and reweighed models", 5.4)
-H3("4.10.5 Stability of the explanations")
-sb = C.STAB
-para(f"With only 30 Black deaths, how far can an importance ranking be trusted? Across 100 bootstrap refits, age is among the top three drivers in {pct(sb.loc['age', 'top3_freq'], 0)} of resamples, "
-     f"nodal status in {pct(sb.loc['n_stage', 'top3_freq'], 0)}, tumour size in {pct(sb.loc['t_stage', 'top3_freq'], 0)} and Luminal A in {pct(sb.loc['sub_luma', 'top3_freq'], 0)}; the ranks of the remaining features span "
-     f"several places (Figure 4.20). Statements about the top one or two features are safe for the Black subgroup; statements about the order of the rest are not.", align="j")
-figure("4", "18_shap_stability_black.png", "Bootstrap stability of the importance rank among Black patients", 5.4)
-H2("4.11 The interactive dashboard (Objectives 1 and 4)")
-para("The dashboard (app.py) puts the entire analysis into one interface (Section 3.11). A clinician enters a patient's characteristics, selects one of the five strategies and sees the predicted risk, the "
-     "threshold that applies to that patient and the decision, together with a SHAP waterfall that explains the score. The fairness lab shows, for each strategy, recall and false-alarm rate by race with "
-     "confidence intervals and the paired changes relative to the baseline. The threshold explorer lets a reviewer slide a global or per-group threshold and watch recall and false alarms move in real "
-     "time, which makes the recall-first trade-off tangible. The data-audit tab exposes the leakage ladder and the missingness table. The user study (Objective 4) has not been run; the dashboard is the "
-     "stimulus it needs (Section 3.12).", align="j")
-H2("4.12 Discussion")
-para(f"Three findings stand out. First, data governance matters more than modelling: an unprotected analysis would have claimed an AUC near 0.9; the honest figure is {auc_g('blind', 'All')[0]:.2f}. "
-     f"Second, the model does not miss Black patients' deaths more often than White patients' (recall gap {ci('aware', 'tpr_gap', True)}), but the study lacks the power to prove equality; "
-     f"with 30 deaths, a gap of 14 points would not be detected. This is a data-collection problem, one that no modelling technique can solve. Third, the measurable disparity is on the other side of the "
-     f"ledger: Black survivors are flagged more often, and the difference grows as outcomes become more certain. For a recall-first screening tool, extra false alarms mean extra visits and anxiety rather than missed cancers, "
-     f"but they are a burden that should not fall unevenly, and in settings where follow-up capacity is limited they would translate into unequal access.", align="j")
-para("Concerning mitigation, the simplest and cheapest approach (reweighing) was the only one with an interval-supported benefit and the only one that leaves the explanations and the workload essentially "
-     "untouched. Race-aware inputs offered no advantage because the model learned nothing from them, and group-specific thresholds are not recommended with the current sample: they raise the number of "
-     "patients flagged, require race at prediction time, and their threshold for the smaller group is too noisy to deliver equal recall. These results echo the general lesson of Obermeyer et al. (2019) and Rajkomar et al. (2018): "
-     "fairness problems in medical algorithms usually originate in the data and the label, not in the algorithm, and the first remedy is to audit them with the right metric and the right uncertainty.", align="j")
-para("Relative to the earlier implementation of this study on the same cohort, which used receptor status (ER, PR, HER2) merged from a second source and reached a hold-out AUC of 0.74, the present model has a lower AUC "
-     f"({auc_g('blind', 'All')[0]:.2f}). The difference is plausible: the present table has no receptor status (ER, PR, HER2), which probably carried part of the earlier signal, and the earlier hold-out "
-     "estimate came from a single split with only 29 Black deaths in the whole cohort, so the two figures are not directly comparable.", align="j")
+para(f"Mitigation changes explanations moderately: the rank correlation of global importance between the race-aware model and the race-blind and reweighed models is {ag['main_vs_blind']['rank_corr']:.2f} and {ag['main_vs_reweigh']['rank_corr']:.2f} ({fr('mitig')}).")
+figure("4", "mitig", "19_explanations_under_mitigation.png", "Feature importance of the race-aware, race-blind and reweighed models", 5.2)
+H2("4.9 The audit-hardened specification")
+pe, he = {k: P.ov("aware", k) for k in ["auc_roc", "pr_auc", "recall", "precision", "flag_rate"]}, {k: H.ov("aware", k) for k in ["auc_roc", "pr_auc", "recall", "precision", "flag_rate"]}
+cmp_rows = []
+for nm, S, e in [("As specified (Table 3.2)", P, pe), ("Audit-hardened", H, he)]:
+    cmp_rows.append([nm, f"{e['auc_roc'][0]:.3f}", f"{e['pr_auc'][0]:.3f}", pct(e["recall"][0]), pct(e["precision"][0]), pct(e["flag_rate"][0], 0), S.ci("aware", "tpr_gap", True).replace(" percentage points", " pp"),
+                     S.ci("aware", "fpr_gap", True).replace(" percentage points", " pp"), S.align.feature.iloc[0]])
+table("4", "compare", "As-specified versus audit-hardened specification (5 x 5 CV; fairness on White and Black patients)",
+      pd.DataFrame(cmp_rows, columns=["Specification", "AUC-ROC", "PR-AUC", "Recall", "Precision", "Flagged", "Recall gap", "False-alarm gap", "Top SHAP feature"]), widths=[1.1, 0.5, 0.5, 0.5, 0.6, 0.5, 1.1, 1.1, 0.9], size=7.5)
+hh = H.tm(MAINM, "auc_roc"); hp = H.tm(MAINM, "pr_auc"); hr_ = H.tm(MAINM, "recall")
+para(f"Without the documentation artefacts the model is a clinically cleaner but weaker one: cross-validated AUC-ROC falls from {pe['auc_roc'][0]:.3f} to {he['auc_roc'][0]:.3f} and PR-AUC from {pe['pr_auc'][0]:.3f} to {he['pr_auc'][0]:.3f} "
+     f"(no-skill {FL['prevalence']:.3f}); at the same 80 % recall target it must flag {pct(he['flag_rate'][0], 0)} of patients with a precision of {pct(he['precision'][0], 0)}, "
+     f"{'below' if he['precision'][0] < FL['precision_floor'] else 'at or above'} the floor of {FL['precision_floor']:.2f}. On the hold-out set its AUC-ROC is {ci3(*hh)} and recall {ci3(*hr_)}. "
+     f"Its leading SHAP feature is {H.align.feature.iloc[0]}, a clinical factor; the top five are {', '.join(H.align.feature.head(5))}. "
+     f"Its explanations are less stable than those of the as-specified model (rank correlation across fold models {H.meta['explain_quality']['fold_stability']['mean_spearman']:.2f} against {EQ['fold_stability']['mean_spearman']:.2f}). "
+     f"Its fairness picture: recall gap {H.ci('aware', 'tpr_gap', True).replace(' percentage points', ' points')}; false-alarm gap {H.ci('aware', 'fpr_gap', True).replace(' percentage points', ' points')}. "
+     f"Within the hardened specification the equalised-odds differences by strategy are: " + "; ".join(f"{SHORT[k].lower()} {pct(H.cv(k, 'eod')[0])}" for k in KEYS) + ".")
+figure("4", "h_rates", "05_rates_by_race.png", "Hardened specification: recall and false-alarm rate by race", 6.0, spec=H)
+figure("4", "h_beeswarm", "12_shap_beeswarm.png", "Hardened specification: SHAP summary", 5.2, spec=H)
+H2("4.10 Dashboard, user-study kit and conceptual framework (Objectives 4 and 5)")
+para("The Streamlit dashboard (app.py) lets a reviewer switch between the two specifications; enter a patient (including \"not recorded\" for radiation, race or N / M and watch the as-specified score move); choose any of the five strategies; "
+     "read the score, the threshold that applies and the SHAP waterfall; inspect hold-out metrics with confidence intervals, confusion matrices, baselines and the threshold rules; explore recall and false-alarm rates by race under a global or group-specific threshold; "
+     "examine explanation quality and the race check; and read the data audit. Objective 4 is delivered as an instrument: 12 case cards in two conditions, a counterbalanced design for 24 participant slots, a questionnaire, a response template and an analysis script "
+     "(Wilcoxon signed-rank with Holm correction, rank-biserial effect sizes), self-tested on synthetic data. No physician data were collected, so no claim about trust or understanding is made. Objective 5 is the framework of Section 3.2.9.")
+H2("4.11 Discussion")
+para(f"Three findings stand out. First, the predictor list of the revised proposal performs better than it should. Its AUC-ROC of {pe['auc_roc'][0]:.2f} is roughly {100 * (pe['auc_roc'][0] - he['auc_roc'][0]):.0f} points above a clinically cleaner specification, and the leading SHAP feature is "
+     f"{P.align.feature.iloc[0].lower()}, whose blanks track death. The explanation is faithful and stable, and it tells the reader something uncomfortable: what the model has learned is partly how the registry was filled in. "
+     "Second, predictive performance is respectable for clinical covariates alone, comparable across XGBoost, logistic regression and a random forest, and the recall-first requirement has a visible price: to catch four in five deaths the model flags about half of all patients, "
+     f"and only about one in five of them dies. Third, the fairness evidence is inconclusive rather than reassuring. No gap is statistically distinguishable from zero, but the recall-gap interval is about ±{100 * HW:.0f} points wide. "
+     "Mitigation is not free: removing race or reweighing lowers Black recall in exchange for fewer false alarms, while group thresholds keep both gaps near zero without a demonstrable advantage over the baseline. "
+     "Documentation differences between groups (more MX codes among Black patients, race not recorded) are themselves a source of group-specific scoring.")
+para("These results echo Obermeyer et al. (2019) and Rajkomar et al. (2018): disparities in medical algorithms usually enter through the data and the label, and the first remedy is to audit with the right metric and the right uncertainty. "
+     "For the thesis, the pragmatic position is to report the as-specified model as the approved design, to show the audit-hardened one beside it, and to recommend that the proposal's Table 3.2 be amended before any further use.")
 doc.add_page_break()
 
 # =============================================================================================
@@ -471,46 +514,47 @@ doc.add_page_break()
 # =============================================================================================
 H1("5.0 Conclusions")
 H2("5.1 Summary of the study")
-para(f"This study built a recall-first XGBoost classifier for death during follow-up in {FL['n_cohort']} White and Black TCGA-BRCA patients, explained it with SHAP, and tested whether it treats the two groups "
-     f"equally and how far bias mitigation can help. A column-by-column data audit removed leakage and informative missingness that would have inflated AUC from {C.LADDER.auc.iloc[0]:.2f} to over 0.9. "
-     f"The final model is an additive, clinically constrained ensemble with an AUC of {auc_g('blind', 'All')[0]:.2f}; at a threshold that catches 80 % of deaths it flags about {pct(cv('blind', 'flag_all')[0], 0)} of patients. "
-     f"Equal opportunity cannot be rejected but cannot be confirmed either, Black survivors are flagged somewhat more often, and reweighing is the most defensible mitigation.", align="j")
+para(f"This study built an XGBoost classifier that predicts death during follow-up among {FL['n_records']:,} TCGA-BRCA patients from baseline clinicopathological data, with a recall-first threshold, explained it with SHAP, audited its inputs, "
+     f"and tested whether it treats Black and White patients equally. The model reaches a cross-validated AUC-ROC of {pe['auc_roc'][0]:.2f} and catches {pct(pe['recall'][0], 0)} of deaths while flagging {pct(pe['flag_rate'][0], 0)} of patients. "
+     f"Part of that performance is documentation: a hardened specification has an AUC-ROC of {he['auc_roc'][0]:.2f}. SHAP explanations are faithful and stable but, for the as-specified model, led by a treatment-documentation field. "
+     "The fairness audit finds no statistically detectable gap and no mitigation that is demonstrably better than the baseline.")
 H2("5.2 Conclusions per objective")
-bullets([("Objective 1 (framework). ", "A reproducible pipeline (audit, validation, recall-first thresholding, fairness audit, SHAP, dashboard) shows where interpretability enters clinical decision support: at the data-governance stage (SHAP and the leakage ladder expose forbidden columns), at model review (direction checks against clinical priors), at the bedside (per-patient waterfalls) and at the governance stage (group-level SHAP and risk-gap decomposition)."),
-         ("Objective 2 (performance). ", f"With a recall target of 80 % the model reaches recall {ci('blind', 'tpr_all')} in cross-validation at a false-positive rate of {ci('blind', 'fpr_all')} and an AUC of {auc_g('blind', 'All')[0]:.2f}. Discrimination is modest, equal to that of logistic regression, and limited by the information in pre-treatment clinical data."),
-         ("Objective 3 (SHAP). ", "Age, nodal status, Luminal A subtype, tumour size and metastasis explain the model; every staging effect points in the clinically expected direction. Explanations are the same for both races and survive mitigation."),
-         ("Objective 4 (clinician trust). ", "A protocol and the dashboard stimulus are ready; no clinician data have been collected, so no conclusion about trust is drawn."),
-         ("Objective 5 (bias). ", f"There is no measurable recall gap ({ci('aware', 'tpr_gap', True)}) but the data cannot exclude one of about 14 points; Black survivors carry a higher false-alarm burden ({ci('aware', 'fpr_gap', True)}), more clearly so for patients with settled outcomes. Reweighing reduced it (paired change {paired('reweigh', 'fpr_gap')[0]:+.3f}); race-awareness and group thresholds did not help.")])
+bullets([("Objective 1 (develop and optimise the classifier). ", f"A depth-{bp['max_depth']}, {bp['n_estimators']}-tree XGBoost with class weighting, monotone staging constraints and a threshold that catches 80 % of deaths was tuned by repeated cross-validation; the training, cross-validated and hold-out AUCs show no material overfitting."),
+         ("Objective 2 (evaluate and benchmark). ", f"Hold-out recall {ci3(*P.tm(MAINM, 'recall'))}, AUC-ROC {ci3(*P.tm(MAINM, 'auc_roc'))}, PR-AUC {ci3(*P.tm(MAINM, 'pr_auc'))} (no-skill {FL['test_deaths'] / FL['n_test']:.2f}), accuracy {P.tm(MAINM, 'accuracy')[0]:.2f} against {1 - FL['test_deaths'] / FL['n_test']:.2f} for always predicting living. Logistic regression and a random forest perform alike; stage alone does not."),
+         ("Objective 3 (SHAP). ", "Explanations are faithful (exact), stable (rank correlation above 0.75) and agree with XGBoost's own importances; three of the top five features are established prognostic factors, and staging effects have the expected direction. The model leans on radiation-therapy documentation and on whether race was recorded."),
+         ("Objective 4 (clinician trust). ", "The study instrument and analysis are ready and tested on synthetic data; no clinician has responded, so no conclusion is drawn."),
+         ("Objective 5 (framework). ", "A pipeline framework places SHAP at two points, as a pre-deployment trust check and as a bedside explanation, with a governance gate for inputs and group-wise monitoring after deployment."),
+         ("Extension (fairness). ", f"Recall gap {P.ci('aware', 'tpr_gap', True)}; false-alarm gap {P.ci('aware', 'fpr_gap', True)}. Race-blind and reweighed models lower Black recall, group thresholds keep gaps near zero without demonstrable benefit, and calibration is looser for Black patients.")])
 H2("5.3 Contributions to knowledge")
-bullets(["A worked, auditable example of recall-first modelling in oncology, including the cost (a false-positive rate of about 63 %) that is rarely reported.",
-         "A leakage-and-missingness ladder that quantifies how much each class of forbidden column inflates performance in TCGA clinical tables.",
-         "A fairness protocol designed for very small subgroups: repeated cross-validation, nested thresholds, paired bootstrap intervals for mitigation effects and settled-outcome sensitivity analyses.",
-         "Group-level SHAP tools (importance by group, exact risk-gap decomposition, missed-death profiles and bootstrap rank stability) that connect explainability to fairness.",
-         "An open-source dashboard and model card tying the thesis numbers to a running application."])
+bullets(["A worked, auditable example of recall-first prognostic modelling in oncology that reports the price of recall (precision, share flagged) and not only accuracy.",
+         "A leakage ladder and artefact ablation that quantify how much of a model's performance comes from documentation rather than biology, in a widely used TCGA table.",
+         "An explanation-quality protocol (fidelity, deletion, stability, clinical alignment, race attribution) that goes beyond showing SHAP plots.",
+         "A fairness protocol for very small subgroups: repeated cross-validation, in-fold thresholds, paired bootstrap comparison of mitigation strategies, settled-outcome and ancestry sensitivity analyses.",
+         "An open-source dashboard, model card, data audit and physician user-study kit tied to the thesis numbers."])
 H2("5.4 Limitations")
-bullets(["Sample size. Thirty Black deaths limit every subgroup statement; the hold-out set holds six.",
-         "Censoring and missing treatment. The label ignores follow-up length and the table has no treatment data, so \"false alarms\" include patients who die later and benefit from treatment given.",
-         "Single cohort. TCGA is not representative of any clinical population and the findings have not been validated externally.",
-         "Race as a variable. Self-reported race is a social label; the ancestry analysis is also small and cannot separate biology from care access.",
-         "Mitigation scope. Only pre- and post-processing were tested; in-processing methods (constrained optimisation, adversarial debiasing) were not.",
-         "User study. Objective 4 is unexecuted; claims about physician trust remain hypotheses."])
+bullets([f"Small group: {FL['deaths_black']} Black deaths; {FL['test_black_deaths']} in the hold-out set. Absence of a detectable gap is not evidence of fairness.",
+         "Censoring: a binary label ignores follow-up length; overall survival includes non-cancer deaths; treatment data other than radiation and neoadjuvant therapy are absent.",
+         "Documentation artefacts: the as-specified model exploits blank fields; the hardened model avoids them at a cost in AUC.",
+         "Single, predominantly European-ancestry cohort; no external validation. Race is a social variable and ancestry analysis is also small.",
+         "Mitigation scope: pre- and post-processing only; group thresholds need race at prediction time.",
+         "Objective 4 is not yet executed."])
 H2("5.5 Recommendations and future work")
-bullets(["Collect or federate more data from underrepresented groups, including African cohorts, and external validation; this is the only remedy for the central uncertainty.",
-         "Add treatment, receptor status and grade, and model time to event with censoring-aware methods (for example survival forests or Cox models with SHAP) rather than a binary label.",
-         "Adopt reweighing as the default mitigation and monitor group-wise recall and false-alarm rates with confidence intervals on every model update.",
-         "Avoid group-specific thresholds until each group has several hundred events.",
-         "Run the clinician study using the dashboard and the protocol in Section 3.12 before any deployment discussion.",
-         "Report subgroup results with uncertainty by default, and keep the leakage audit as a gate in every pipeline."])
+bullets(["Amend Table 3.2 of the proposal before further use: drop radiation therapy (or replace it by a reliable treatment field), set NX and MX to their AJCC defaults, and handle unrecorded race explicitly; keep the as-specified model only as the documented primary analysis.",
+         "Define \"acceptable precision\" numerically in the thesis (here 1.25 times prevalence) and report precision and the share flagged next to recall.",
+         "Collect or federate more data for under-represented groups, with external validation; this is the only remedy for the central uncertainty.",
+         "Model time to event with censoring-aware methods (XGBoost Cox / AFT objectives) and add treatment and receptor variables.",
+         "Monitor group-wise recall and false-alarm rates with confidence intervals at every model update; avoid group-specific thresholds until each group has several hundred events.",
+         "Run the clinician study with the kit in the userstudy folder after ethical approval; pre-register trust and understandability as primary outcomes."])
 doc.add_page_break()
 H1("References cited in Chapters 3, 4 and 5")
 refs = [
-    "Barocas, S., Hardt, M. and Narayanan, A. (2019). Fairness and Machine Learning. fairmlbook.org.",
     "Carrot-Zhang, J. et al. (2020). Comprehensive analysis of genetic ancestry and its molecular correlates in cancer. Cancer Cell, 37(5), 639-654.",
     "Cerami, E. et al. (2012). The cBio Cancer Genomics Portal: an open platform for exploring multidimensional cancer genomics data. Cancer Discovery, 2(5), 401-404.",
-    "Chen, T. and Guestrin, C. (2016). XGBoost: a scalable tree boosting system. Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, 785-794.",
+    "Chen, T. and Guestrin, C. (2016). XGBoost: a scalable tree boosting system. Proceedings of the 22nd ACM SIGKDD Conference, 785-794.",
     "DeSantis, C. E. et al. (2019). Breast cancer statistics, 2019. CA: A Cancer Journal for Clinicians, 69(6), 438-451.",
     "Efron, B. and Tibshirani, R. J. (1993). An Introduction to the Bootstrap. Chapman and Hall.",
     "Hardt, M., Price, E. and Srebro, N. (2016). Equality of opportunity in supervised learning. Advances in Neural Information Processing Systems 29.",
+    "Hoffman, R. R., Mueller, S. T., Klein, G. and Litman, J. (2018). Metrics for explainable AI: challenges and prospects. arXiv:1812.04608.",
     "Kamiran, F. and Calders, T. (2012). Data preprocessing techniques for classification without discrimination. Knowledge and Information Systems, 33(1), 1-33.",
     "Kaufman, S., Rosset, S. and Perlich, C. (2011). Leakage in data mining: formulation, detection, and avoidance. Proceedings of the 17th ACM SIGKDD Conference, 556-563.",
     "Liu, J. et al. (2018). An integrated TCGA pan-cancer clinical data resource to drive high-quality survival outcome analytics. Cell, 173(2), 400-416.",
@@ -519,10 +563,13 @@ refs = [
     "Obermeyer, Z., Powers, B., Vogeli, C. and Mullainathan, S. (2019). Dissecting racial bias in an algorithm used to manage the health of populations. Science, 366(6464), 447-453.",
     "Parker, J. S. et al. (2009). Supervised risk predictor of breast cancer based on intrinsic subtypes. Journal of Clinical Oncology, 27(8), 1160-1167.",
     "Rajkomar, A., Hardt, M., Howell, M. D., Corrado, G. and Chin, M. H. (2018). Ensuring fairness in machine learning to advance health equity. Annals of Internal Medicine, 169(12), 866-872.",
-    "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. Journal of the American Statistical Association, 22(158), 209-212.",
+    "Akiba, T., Sano, S., Yanase, T., Ohta, T. and Koyama, M. (2019). Optuna: a next-generation hyperparameter optimization framework. Proceedings of the 25th ACM SIGKDD Conference, 2623-2631.",
 ]
-for r in refs:
-    p = para(r); p.paragraph_format.left_indent = Inches(0.4); p.paragraph_format.first_line_indent = Inches(-0.4)
+for r_ in sorted(refs):
+    p = para(r_); p.paragraph_format.left_indent = Inches(0.4); p.paragraph_format.first_line_indent = Inches(-0.4)
 
+for ch in ("3", "4"):
+    assert fig_n[ch] == len(FIGS[ch]), (ch, fig_n[ch], len(FIGS[ch]))
+    assert tab_n[ch] == len(TABS[ch]), (ch, tab_n[ch], len(TABS[ch]))
 doc.save(OUT)
 print("saved", OUT, "words:", sum(len(p.text.split()) for p in doc.paragraphs))

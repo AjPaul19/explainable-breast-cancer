@@ -1,0 +1,5 @@
+importance_type,spearman_with_shap
+gain,0.95
+total_gain,0.9735294117647059
+weight,0.9410908586127577
+cover,0.7794117647058825

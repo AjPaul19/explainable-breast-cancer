@@ -1,0 +1,17 @@
+,mean_rank,rank_sd,top3_freq,rank_lo,rank_hi,mean_rank_all,top3_freq_all,label
+radiation,1.9,0.9692233691951198,0.92,1.0,4.0,1.34,1.0,Radiation therapy
+n_stage,2.4,1.5504968249049735,0.81,1.0,6.0,2.49,0.87,Nodal status (N)
+age,3.12,1.3354528608057805,0.6,1.0,5.5249999999999915,2.8,0.85,Age at diagnosis
+m_stage,3.32,1.2543258481484518,0.54,1.0,5.5249999999999915,5.19,0.1,Distant metastasis (M)
+t_stage,5.63,1.8348753845336956,0.07,2.475,11.0,5.55,0.11,Tumour size (T)
+race_black,6.56,1.934900096604056,0.04,3.0,10.0,8.12,0.0,Race: Black
+race_asian,7.46,1.048519880304584,0.0,6.0,10.0,4.85,0.04,Race: Asian
+sub_luma,8.04,2.4900610515415162,0.02,4.0,12.524999999999991,8.15,0.03,PAM50: Luminal A
+sub_lumb,10.27,2.522044224574,0.0,6.0,15.0,10.37,0.0,PAM50: Luminal B
+sub_basal,10.49,2.0816417374832596,0.0,6.0,15.0,10.88,0.0,PAM50: Basal-like
+histology_lobular,11.03,2.194828632780411,0.0,6.475,14.524999999999991,10.53,0.0,Histology: lobular
+sub_her2,11.885,2.5847796537782206,0.0,6.0,15.5,11.615,0.0,PAM50: HER2-enriched
+sub_normal,12.175,2.804555277228513,0.0,6.475,16.0,12.465,0.0,PAM50: Normal-like
+histology_other,13.115,1.9538294436694044,0.0,9.0,16.0,12.925,0.0,Histology: other
+prior_dx,13.135,2.231382005969766,0.0,9.0,16.0,13.305,0.0,Prior diagnosis
+neoadjuvant,15.47,0.960902353693305,0.0,13.0,16.0,15.42,0.0,Neoadjuvant therapy

@@ -1,0 +1,17 @@
+,mean_shap_White,mean_shap_Black,contribution_to_gap,label
+race_black,-0.013642172,0.07879763,0.0924398,Race: Black
+m_stage,-0.05798744,-0.14701323,-0.089025795,Distant metastasis (M)
+sub_luma,-0.017236505,0.016606912,0.033843417,PAM50: Luminal A
+radiation,-0.13467716,-0.16247012,-0.02779296,Radiation therapy
+age,-0.047241956,-0.058940887,-0.011698931,Age at diagnosis
+t_stage,-0.02532331,-0.03241406,-0.007090749,Tumour size (T)
+sub_basal,-4.4435424e-06,-0.0030858293,-0.0030813857,PAM50: Basal-like
+sub_normal,-0.001761677,0.0011411926,0.0029028696,PAM50: Normal-like
+sub_her2,-0.002296561,-9.525887e-05,0.002201302,PAM50: HER2-enriched
+n_stage,-0.06849791,-0.06649401,0.0020039007,Nodal status (N)
+prior_dx,-0.0006529591,0.00011430726,0.0007672664,Prior diagnosis
+race_asian,0.07372596,0.07384273,0.0001167655,Race: Asian
+neoadjuvant,-5.372615e-05,-0.00014603784,-9.231169e-05,Neoadjuvant therapy
+histology_other,-9.206977e-05,-0.00014486168,-5.279191e-05,Histology: other
+sub_lumb,-0.0012943941,-0.0012990441,-4.649977e-06,PAM50: Luminal B
+histology_lobular,-0.003274556,-0.0032742936,2.6240014e-07,Histology: lobular

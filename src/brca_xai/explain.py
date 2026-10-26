@@ -53,6 +53,8 @@ def direction_check(X: pd.DataFrame, sv: pd.DataFrame) -> pd.DataFrame:
     """Does SHAP agree with textbook oncology?  Spearman(feature value, SHAP) against the expected sign."""
     rows = []
     for f, sign in D.CLINICAL_PRIOR.items():
+        if f not in sv.columns:
+            continue
         ok = X[f].notna()
         constant = sv.loc[ok, f].nunique() <= 1          # the model never split on it
         rho = np.nan if (X.loc[ok, f].nunique() < 2 or constant) else spearmanr(X.loc[ok, f], sv.loc[ok, f])[0]
@@ -87,22 +89,103 @@ def explanation_agreement(sv_a: pd.DataFrame, sv_b: pd.DataFrame) -> dict:
 
 
 def shap_stability(X: pd.DataFrame, y: np.ndarray, group: np.ndarray, strata: np.ndarray, params: dict,
-                   features: list[str], n_boot: int = 100, seed: int = 0, weights_fn=None) -> pd.DataFrame:
-    """Bootstrap the training set, refit, re-explain, and record each feature's rank among Black patients
-    (the sub-group with only 30 deaths).  Low stability = do not over-interpret the ranking."""
+                   features: list[str], n_boot: int = 100, seed: int = 0, weights_fn=None) -> tuple[pd.DataFrame, float]:
+    """Bootstrap the training set, refit, re-explain, and record each feature's importance rank among Black patients
+    (the sub-group with only 30 deaths) and overall.  Returns (table, mean pairwise Spearman of the overall importance
+    vectors across bootstraps).  Low stability = do not over-interpret the ranking."""
     rng = np.random.default_rng(seed)
-    ranks = []
+    r_black, r_all, vecs = [], [], []
     for b in range(n_boot):
         idx = np.concatenate([rng.choice(np.where(strata == s)[0], size=(strata == s).sum(), replace=True)
                               for s in np.unique(strata)])
-        m = M.make_model(params, seed + b)
+        m = M.make_model(params, seed + b, cols=features, spw=M.class_weight(y[idx]))
         w = M.reweighing_weights(group[idx], y[idx]) if weights_fn else None
         m.fit(X.iloc[idx][features], y[idx], sample_weight=w)
         sv, _ = shap_matrix(m, X, features)
-        imp = sv[group == D.UNPRIVILEGED].abs().mean()
-        ranks.append(imp.rank(ascending=False))
-    R = pd.DataFrame(ranks)
+        r_black.append(sv[group == D.UNPRIVILEGED].abs().mean().rank(ascending=False))
+        imp = sv.abs().mean(); vecs.append(imp.to_numpy()); r_all.append(imp.rank(ascending=False))
+    R, A = pd.DataFrame(r_black), pd.DataFrame(r_all)
     out = pd.DataFrame({"mean_rank": R.mean(), "rank_sd": R.std(), "top3_freq": (R <= 3).mean(),
-                        "rank_lo": R.quantile(0.025), "rank_hi": R.quantile(0.975)})
+                        "rank_lo": R.quantile(0.025), "rank_hi": R.quantile(0.975),
+                        "mean_rank_all": A.mean(), "top3_freq_all": (A <= 3).mean()})
     out["label"] = [D.LABELS[f] for f in out.index]
-    return out.sort_values("mean_rank")
+    V = np.array(vecs)
+    pair = [spearmanr(V[i], V[j])[0] for i in range(0, len(V), 2) for j in range(i + 1, len(V), 7)]
+    return out.sort_values("mean_rank"), float(np.nanmean(pair))
+
+
+# --------------------------------------------------------------------------------------------
+# Explanation quality (proposal 3.2.6): fidelity, stability, clinical alignment, race check, faithfulness
+# --------------------------------------------------------------------------------------------
+def fidelity(model, X: pd.DataFrame, features: list[str]) -> dict:
+    """Local accuracy: base value + sum of SHAP values must equal the model's margin for every patient."""
+    sv, base = shap_matrix(model, X, features)
+    margin = model.predict(X[features], output_margin=True)
+    err = np.abs(sv.sum(1).to_numpy() + base - margin)
+    return dict(max_abs_error=float(err.max()), mean_abs_error=float(err.mean()), n=len(X))
+
+
+def builtin_agreement(model, sv: pd.DataFrame) -> pd.DataFrame:
+    """Rank correlation between mean |SHAP| and XGBoost's built-in importances."""
+    shap_imp = sv.abs().mean()
+    rows = []
+    booster = model.get_booster()
+    for kind in ["gain", "total_gain", "weight", "cover"]:
+        sc = booster.get_score(importance_type=kind)
+        v = pd.Series({f: sc.get(f, 0.0) for f in sv.columns})
+        rows.append(dict(importance_type=kind, spearman_with_shap=float(spearmanr(shap_imp, v)[0])))
+    return pd.DataFrame(rows)
+
+
+def fold_stability(X: pd.DataFrame, y: np.ndarray, strata: np.ndarray, params: dict, features: list[str], seed: int = 0) -> dict:
+    """Rank correlation of global importance between models trained on different CV folds (5 x 2)."""
+    from sklearn.model_selection import RepeatedStratifiedKFold
+    vecs = []
+    for tr, _ in RepeatedStratifiedKFold(n_splits=5, n_repeats=2, random_state=seed).split(np.zeros(len(y)), strata):
+        m = M.make_model(params, seed, cols=features, spw=M.class_weight(y[tr])).fit(X.iloc[tr][features], y[tr])
+        vecs.append(shap_matrix(m, X, features)[0].abs().mean().to_numpy())
+    pair = [spearmanr(vecs[i], vecs[j])[0] for i in range(len(vecs)) for j in range(i + 1, len(vecs))]
+    return dict(mean_spearman=float(np.nanmean(pair)), min_spearman=float(np.nanmin(pair)), n_models=len(vecs))
+
+
+def clinical_alignment(sv: pd.DataFrame, top: int = 5) -> pd.DataFrame:
+    imp = global_importance(sv)
+    rows = []
+    for r, (f, v) in enumerate(imp.head(top).items(), 1):
+        rows.append(dict(rank=r, feature=D.LABELS[f], mean_abs_shap=float(v),
+                         established_prognostic_factor=D.ESTABLISHED_FACTORS.get(f, "no (administrative / treatment-documentation field)")))
+    return pd.DataFrame(rows)
+
+
+def race_check(sv: pd.DataFrame, X: pd.DataFrame, c: pd.DataFrame) -> pd.DataFrame:
+    """Does the model lean on race?  Mean |SHAP| of the race columns, split by whether race was recorded."""
+    rows = []
+    cols = [f for f in D.RACE_FEATURES if f in sv.columns]
+    if not cols:
+        return pd.DataFrame()
+    total = sv.abs().sum(1)
+    for lab, m in [("race recorded", c["race_detail"] != "Unknown"), ("race NOT recorded", c["race_detail"] == "Unknown")]:
+        rs = sv.loc[m.to_numpy(), cols].sum(1)
+        rows.append(dict(patients=lab, n=int(m.sum()), mean_race_shap=float(rs.mean()), mean_abs_race_shap=float(rs.abs().mean()),
+                         share_of_total_attribution=float(rs.abs().sum() / total[m.to_numpy()].sum()),
+                         death_rate=float(c.loc[m, D.TARGET].mean())))
+    return pd.DataFrame(rows)
+
+
+def deletion_test(model, X: pd.DataFrame, y: np.ndarray, sv: pd.DataFrame, features: list[str], ks=(1, 2, 3, 4), seed: int = 0) -> pd.DataFrame:
+    """Faithfulness: blank the k most-attributed features of every patient (set to missing) and compare the AUC drop with
+    blanking k random features.  A faithful explanation should hurt more than chance."""
+    from sklearn.metrics import roc_auc_score
+    rng = np.random.default_rng(seed)
+    base = roc_auc_score(y, model.predict_proba(X[features])[:, 1])
+    absv = sv.abs().to_numpy()
+    order = np.argsort(-absv, axis=1)
+    rows = [dict(k=0, auc_top_shap=base, auc_random=base)]
+    for k in ks:
+        Xt = X[features].to_numpy().copy(); Xr = X[features].to_numpy().copy()
+        for i in range(len(Xt)):
+            Xt[i, order[i, :k]] = np.nan
+            Xr[i, rng.choice(len(features), k, replace=False)] = np.nan
+        rows.append(dict(k=k, auc_top_shap=roc_auc_score(y, model.predict_proba(pd.DataFrame(Xt, columns=features))[:, 1]),
+                         auc_random=roc_auc_score(y, model.predict_proba(pd.DataFrame(Xr, columns=features))[:, 1])))
+    return pd.DataFrame(rows)

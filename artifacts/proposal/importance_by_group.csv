@@ -1,0 +1,17 @@
+,White,Black,ratio_B_over_W,rank_White,rank_Black,label
+radiation,0.3549001,0.28577265,0.80522,1,2,Radiation therapy
+n_stage,0.29884985,0.31050572,1.0390024,2,1,Nodal status (N)
+age,0.23004682,0.22346707,0.9713982,3,4,Age at diagnosis
+t_stage,0.116914205,0.1122509,0.96011347,4,5,Tumour size (T)
+m_stage,0.10703719,0.23314333,2.1781526,5,3,Distant metastasis (M)
+sub_luma,0.08766538,0.08389155,0.95695186,6,7,PAM50: Luminal A
+race_asian,0.07372596,0.07384273,1.0015838,7,8,Race: Asian
+race_black,0.020015707,0.09213082,4.602926,8,6,Race: Black
+sub_normal,0.013220144,0.015291153,1.1566556,9,9,PAM50: Normal-like
+sub_lumb,0.011368752,0.011280052,0.99219793,10,10,PAM50: Luminal B
+histology_lobular,0.010756518,0.007806559,0.7257515,11,12,Histology: lobular
+sub_her2,0.009363381,0.010464201,1.1175665,12,11,PAM50: HER2-enriched
+sub_basal,0.005821623,0.007649537,1.313987,13,13,PAM50: Basal-like
+prior_dx,0.0025669653,0.0025121567,0.9786485,14,14,Prior diagnosis
+histology_other,0.00061949994,0.0005623446,0.9077396,15,15,Histology: other
+neoadjuvant,0.00016877968,0.00014603784,0.86525726,16,16,Neoadjuvant therapy
