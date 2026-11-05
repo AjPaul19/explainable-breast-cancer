@@ -1,15 +1,15 @@
 ,mean_shap_White,mean_shap_Black,contribution_to_gap,label
-sub_luma,-0.026631458,0.03477443,0.06140589,PAM50: Luminal A
-m_stage_h,-0.060537122,-0.036660414,0.023876708,"Distant metastasis (M, MX=M0)"
-n_stage_h,-0.019217681,-0.032435838,-0.013218157,"Nodal status (N, NX=N0)"
-race_black,0.0054316334,0.013912754,0.008481121,Race: Black
-age,-0.06641084,-0.07465221,-0.00824137,Age at diagnosis
-t_stage,-0.027252486,-0.022124479,0.0051280074,Tumour size (T)
-sub_basal,-0.001500394,-0.006277265,-0.004776871,PAM50: Basal-like
-sub_her2,-0.0037050794,-6.514083e-05,0.0036399385,PAM50: HER2-enriched
-histology_lobular,-0.0021305985,0.0014340148,0.0035646134,Histology: lobular
-race_asian,0.07892137,0.081562586,0.002641216,Race: Asian
-sub_normal,-0.0012467781,0.0008231259,0.002069904,PAM50: Normal-like
-prior_dx,-0.0009468678,0.00012593102,0.0010727989,Prior diagnosis
-histology_other,-0.00024145778,-0.0013108908,-0.001069433,Histology: other
-sub_lumb,-0.002511314,-0.002589221,-7.790723e-05,PAM50: Luminal B
+sub_luma,-0.04479443,0.02779123,0.07258566,PAM50: Luminal A
+race_black,0.0065415544,0.0428884,0.036346845,Race: Black
+m_stage_h,-0.052130252,-0.033905245,0.018225007,"Distant metastasis (M, MX=M0)"
+sub_basal,-0.00324458,-0.018619897,-0.015375317,PAM50: Basal-like
+age,-0.09001609,-0.10353202,-0.013515927,Age at diagnosis
+histology_lobular,-0.0054899263,0.0066366442,0.012126571,Histology: lobular
+n_stage_h,-0.023113612,-0.034620024,-0.011506412,"Nodal status (N, NX=N0)"
+sub_her2,-0.006123386,-8.624334e-05,0.0060371426,PAM50: HER2-enriched
+sub_normal,-0.0040394347,-0.00027065517,0.0037687796,PAM50: Normal-like
+prior_dx,-0.002110489,0.0008279691,0.002938458,Prior diagnosis
+race_asian,0.072544,0.075136155,0.0025921538,Race: Asian
+histology_other,-0.0026939232,-0.0042512584,-0.0015573353,Histology: other
+t_stage,-0.041925028,-0.04055017,0.0013748594,Tumour size (T)
+sub_lumb,-0.0035759239,-0.004003162,-0.00042723818,PAM50: Luminal B

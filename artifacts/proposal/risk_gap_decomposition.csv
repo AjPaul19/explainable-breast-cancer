@@ -1,17 +1,17 @@
 ,mean_shap_White,mean_shap_Black,contribution_to_gap,label
-race_black,-0.013642172,0.07879763,0.0924398,Race: Black
-m_stage,-0.05798744,-0.14701323,-0.089025795,Distant metastasis (M)
-sub_luma,-0.017236505,0.016606912,0.033843417,PAM50: Luminal A
-radiation,-0.13467716,-0.16247012,-0.02779296,Radiation therapy
-age,-0.047241956,-0.058940887,-0.011698931,Age at diagnosis
-t_stage,-0.02532331,-0.03241406,-0.007090749,Tumour size (T)
-sub_basal,-4.4435424e-06,-0.0030858293,-0.0030813857,PAM50: Basal-like
-sub_normal,-0.001761677,0.0011411926,0.0029028696,PAM50: Normal-like
-sub_her2,-0.002296561,-9.525887e-05,0.002201302,PAM50: HER2-enriched
-n_stage,-0.06849791,-0.06649401,0.0020039007,Nodal status (N)
-prior_dx,-0.0006529591,0.00011430726,0.0007672664,Prior diagnosis
-race_asian,0.07372596,0.07384273,0.0001167655,Race: Asian
-neoadjuvant,-5.372615e-05,-0.00014603784,-9.231169e-05,Neoadjuvant therapy
-histology_other,-9.206977e-05,-0.00014486168,-5.279191e-05,Histology: other
-sub_lumb,-0.0012943941,-0.0012990441,-4.649977e-06,PAM50: Luminal B
-histology_lobular,-0.003274556,-0.0032742936,2.6240014e-07,Histology: lobular
+race_black,-0.007625608,0.050538335,0.05816394,Race: Black
+m_stage,-0.05068542,-0.092818186,-0.042132765,Distant metastasis (M)
+sub_luma,-0.014953519,0.010396884,0.025350403,PAM50: Luminal A
+radiation,-0.13129538,-0.15188393,-0.020588547,Radiation therapy
+age,-0.041452736,-0.05260979,-0.011157054,Age at diagnosis
+t_stage,-0.024298945,-0.03070405,-0.006405104,Tumour size (T)
+n_stage,-0.061233573,-0.06724401,-0.0060104355,Nodal status (N)
+sub_normal,-0.002093037,0.0002609137,0.0023539506,PAM50: Normal-like
+histology_lobular,-0.002349688,-0.0001900386,0.0021596493,Histology: lobular
+sub_her2,-0.0021452336,-0.00040801024,0.0017372234,PAM50: HER2-enriched
+sub_basal,-0.0008572139,-0.0023033877,-0.0014461738,PAM50: Basal-like
+histology_other,-0.00025273033,-0.0006786545,-0.0004259242,Histology: other
+race_asian,0.050062187,0.049715012,-0.0003471747,Race: Asian
+prior_dx,-0.00030358936,-0.00011010523,0.00019348413,Prior diagnosis
+sub_lumb,-0.0035902625,-0.0034233856,0.00016687694,PAM50: Luminal B
+neoadjuvant,-0.00020479033,-0.00034955595,-0.00014476563,Neoadjuvant therapy

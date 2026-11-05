@@ -1,6 +1,6 @@
 rank,feature,mean_abs_shap,established_prognostic_factor
-1,Age at diagnosis,0.2915732264518738,Age at diagnosis
-2,"Nodal status (N, NX=N0)",0.1729486584663391,Nodal status
-3,Race: Asian,0.1668456494808197,no (administrative / treatment-documentation field)
-4,PAM50: Luminal A,0.1420775055885315,Molecular subtype
-5,"Distant metastasis (M, MX=M0)",0.12992286682128906,Metastasis
+1,Age at diagnosis,0.3058793544769287,Age at diagnosis
+2,"Nodal status (N, NX=N0)",0.16683591902256012,Nodal status
+3,PAM50: Luminal A,0.16552385687828064,Molecular subtype
+4,Race: Asian,0.15771213173866272,no (administrative / treatment-documentation field)
+5,Tumour size (T),0.13674481213092804,Tumour size
